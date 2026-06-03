@@ -204,34 +204,98 @@ close_port_by_tag() {
 # =================================================================
 #  4. 自动换源、依赖环境检查、核心拉取与节点探测
 # =================================================================
-change_system_source() {
-    echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 是否需要一键替换系统软件源 (防卡死，国内机或连接异常时推荐)？(y/n) [默认: n]: ${PLAIN}"
-    read change_src || change_src="n"
-    if [[ "$change_src" == "y" || "$change_src" == "Y" ]]; then
-        yellow "  正在为您自动备份并替换基础软件源 (Aliyun 高速镜像)..."
-        if [[ $SYSTEM == "Alpine" ]]; then
-            cp /etc/apk/repositories /etc/apk/repositories.bak 2>/dev/null
-            sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
-        elif [[ $SYSTEM == "Debian" ]]; then
-            cp /etc/apt/sources.list /etc/apt/sources.list.bak 2>/dev/null
-            sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
-            sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list
-        elif [[ $SYSTEM == "Ubuntu" ]]; then
-            cp /etc/apt/sources.list /etc/apt/sources.list.bak 2>/dev/null
-            sed -i 's/[a-z]*.archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
-            sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
-        elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Alma" || $SYSTEM == "Rocky" || $SYSTEM == "Fedora" ]]; then
-            cp -r /etc/yum.repos.d /etc/yum.repos.d.bak 2>/dev/null
-            sed -i 's/^mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/*.repo 2>/dev/null
-            sed -i 's/^#baseurl=/baseurl=/g' /etc/yum.repos.d/*.repo 2>/dev/null
-            sed -i 's/mirror.centos.org/mirrors.aliyun.com/g' /etc/yum.repos.d/*.repo 2>/dev/null
-            sed -i 's/download.fedoraproject.org/mirrors.aliyun.com/g' /etc/yum.repos.d/*.repo 2>/dev/null
-        fi
-        green "  [✔] 软件源已成功替换并备份完毕！"
+run_with_timeout() {
+    local seconds="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" bash -c "$*"
     else
-        green "  [跳过] 保留系统默认软件源。"
+        bash -c "$*"
     fi
+}
+
+pkg_update_fast_cmd() {
+    case "$SYSTEM" in
+        Alpine)
+            echo "apk update"
+            ;;
+        Debian|Ubuntu)
+            echo "apt-get -o Acquire::http::Timeout=8 -o Acquire::https::Timeout=8 -o Acquire::Retries=0 update"
+            ;;
+        CentOS|Fedora)
+            echo "yum -y --setopt=timeout=8 makecache"
+            ;;
+        *)
+            echo "$PKG_UPDATE"
+            ;;
+    esac
+}
+
+switch_system_source_auto() {
+    yellow "  默认软件源响应异常，正在自动备份并切换至 Aliyun 镜像源..."
+    if [[ $SYSTEM == "Alpine" ]]; then
+        cp /etc/apk/repositories /etc/apk/repositories.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g; s#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories
+    elif [[ $SYSTEM == "Debian" ]]; then
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        sed -i 's#http://deb.debian.org#https://mirrors.aliyun.com#g; s#https://deb.debian.org#https://mirrors.aliyun.com#g' /etc/apt/sources.list 2>/dev/null || true
+        sed -i 's#http://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g; s#https://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g' /etc/apt/sources.list 2>/dev/null || true
+    elif [[ $SYSTEM == "Ubuntu" ]]; then
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        sed -i 's#http://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g; s#https://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list 2>/dev/null || true
+        sed -i 's#http://security.ubuntu.com#https://mirrors.aliyun.com#g; s#https://security.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list 2>/dev/null || true
+    elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" ]]; then
+        cp -r /etc/yum.repos.d /etc/yum.repos.d.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        sed -i 's/^mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/*.repo 2>/dev/null || true
+        sed -i 's/^#baseurl=/baseurl=/g' /etc/yum.repos.d/*.repo 2>/dev/null || true
+        sed -i 's#mirror.centos.org#mirrors.aliyun.com#g; s#download.fedoraproject.org#mirrors.aliyun.com#g' /etc/yum.repos.d/*.repo 2>/dev/null || true
+    fi
+    green "  [✔] 镜像源切换完成。"
+}
+
+auto_source_guard() {
+    echo ""
+    print_line
+    green "                  软件源智能探测与防卡死保护                  "
+    print_line
+    echo ""
+    yellow "  正在限时检测默认软件源连通性，异常时将自动切换镜像源..."
+
+    local probe_cmd
+    probe_cmd="$(pkg_update_fast_cmd)"
+    if run_with_timeout 35 "$probe_cmd" >/tmp/singbox_source_probe.log 2>&1; then
+        green "  [✔] 默认软件源可用，继续保留系统当前源。"
+        SOURCE_UPDATED=1
+        return 0
+    fi
+
+    yellow "  默认软件源检测失败或超时，已触发自动换源兜底。"
+    switch_system_source_auto
+
+    if run_with_timeout 45 "$probe_cmd" >/tmp/singbox_source_probe.log 2>&1; then
+        green "  [✔] 镜像源刷新成功。"
+        SOURCE_UPDATED=1
+        return 0
+    fi
+
+    red "  [错误] 镜像源刷新仍失败，最近日志如下："
+    tail -n 30 /tmp/singbox_source_probe.log 2>/dev/null || true
+    return 1
+}
+
+print_dep_status() {
+    local name="$1"
+    local cmd="$2"
+    local tip="$3"
+    if command -v "$cmd" >/dev/null 2>&1; then
+        green "    ✓ $name"
+    else
+        yellow "    · $name  ${tip}"
+    fi
+}
+
+change_system_source() {
+    auto_source_guard
 }
 
 check_env() {
@@ -242,21 +306,37 @@ check_env() {
     print_line
     echo ""
     green "  当前操作系统: $SYSTEM"
+    echo ""
+    purple "  本步骤会自动完成：软件源探测、依赖补全、二维码组件、Sing-box 核心检查。"
 
-    # 执行防卡死换源策略
-    change_system_source
-    
+    SOURCE_UPDATED=0
+    auto_source_guard || { red " [错误] 软件源刷新失败，请检查 VPS 网络连接！"; exit 1; }
+
+    echo ""
+    print_line
+    green "                        前置组件巡检                        "
+    print_line
+    print_dep_status "网络拉取工具 curl" "curl" "待安装"
+    print_dep_status "备用下载工具 wget" "wget" "待安装"
+    print_dep_status "端口检测工具 ss" "ss" "待安装"
+    print_dep_status "防火墙工具 iptables" "iptables" "待安装"
+    print_dep_status "JSON 处理器 jq" "jq" "待安装"
+    print_dep_status "证书工具 openssl" "openssl" "待安装"
+    print_dep_status "二维码工具 qrencode" "qrencode" "待安装，用于订阅二维码"
+    print_dep_status "Nginx 订阅分发" "nginx" "待安装"
+
     echo ""
     yellow "  正在校准系统时钟 (防御 TLS 时钟偏移瘫痪)..."
     local date_str=$(curl -sI -m 3 https://google.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
     [[ -z "$date_str" ]] && date_str=$(curl -sI -m 3 https://cloudflare.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
-    [[ -n "$date_str" ]] && date -s "${date_str}Z" || true
+    [[ -n "$date_str" ]] && date -s "${date_str}Z" >/dev/null 2>&1 || true
+    green "  [✔] 时间校准步骤完成。"
     
     local cmds=("curl" "wget" "sudo" "ss" "iptables" "python3" "openssl" "socat" "qrencode" "jq" "tar" "nginx")
     local missing=0
 
     for cmd in "${cmds[@]}"; do
-        if ! command -v "$cmd" > /dev/null; then missing=1; fi
+        if ! command -v "$cmd" > /dev/null 2>&1; then missing=1; fi
     done
 
     if [[ $SYSTEM == "Alpine" ]]; then
@@ -266,66 +346,29 @@ check_env() {
     fi
 
     if [[ $missing -eq 1 ]]; then
-        yellow "  发现缺失前置组件，正在为您拉取安装 (日志全开)..."
-        [[ ! $SYSTEM == "CentOS" ]] && { $PKG_UPDATE || true; }
+        echo ""
+        yellow "  发现缺失组件，正在自动补全。安装过程启用限时保护，失败将提示日志。"
+        if [[ "${SOURCE_UPDATED:-0}" -ne 1 ]]; then
+            auto_source_guard || { red " [错误] 软件源刷新失败！"; exit 1; }
+        fi
         
         if [[ $SYSTEM == "Alpine" ]]; then
-            $PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat libqrencode-tools jq coreutils nginx tar libc6-compat gcompat || { red " [错误] 依赖安装失败！"; exit 1; }
-        elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" || $SYSTEM == "Alma" || $SYSTEM == "Rocky" ]]; then
+            run_with_timeout 180 "$PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat libqrencode-tools jq coreutils nginx tar libc6-compat gcompat" || run_with_timeout 180 "$PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat qrencode jq coreutils nginx tar libc6-compat gcompat" || { red " [错误] 依赖安装失败！"; exit 1; }
+        elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" ]]; then
             $PKG_INSTALL epel-release || true
-            $PKG_INSTALL curl wget sudo procps iptables iptables-services iproute python3 openssl socat qrencode jq coreutils nginx tar || { red " [错误] 依赖安装失败！"; exit 1; }
+            run_with_timeout 240 "$PKG_INSTALL curl wget sudo procps iptables iptables-services iproute python3 openssl socat qrencode jq coreutils nginx tar" || { red " [错误] 依赖安装失败！"; exit 1; }
         else
             export DEBIAN_FRONTEND=noninteractive
-            apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y install curl wget sudo procps iptables-persistent netfilter-persistent iproute2 python3 openssl socat qrencode jq coreutils nginx tar || { red " [错误] 依赖安装失败！"; exit 1; }
+            run_with_timeout 240 "apt-get -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -y install curl wget sudo procps iptables-persistent netfilter-persistent iproute2 python3 openssl socat qrencode jq coreutils nginx tar" || { red " [错误] 依赖安装失败！"; exit 1; }
         fi
-        green "  所有前置依赖补全完成！"
-    else
-        green "  所有前置依赖检查通过，环境完美！"
-    fi
-
-    if [[ ! -f "/usr/local/bin/sing-box" ]]; then
         echo ""
-        yellow "  正在拉取 Sing-box 最新版二进制核心 (全架构适配)..."
-        local arch=$(uname -m)
-        local sb_arch=""
-        
-        case "$arch" in
-            x86_64 | amd64)      sb_arch="amd64" ;;
-            aarch64 | arm64)     sb_arch="arm64" ;;
-            armv7* | armv6*)     sb_arch="armv7" ;;
-            i386 | i686)         sb_arch="386" ;;
-            s390x)               sb_arch="s390x" ;;
-            *) red " [致命错误] Sing-box 暂不支持您的 CPU 架构: $arch！" && exit 1 ;;
-        esac
-
-        local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r')
-        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.12.0" 
-        
-        local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
-        
-        rm -rf /tmp/sing-box*
-        wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
-        
-        if [[ ! -s /tmp/sing-box.tar.gz ]]; then
-            red " [致命错误] Sing-box 核心下载失败！请检查网络。"
-            exit 1
-        fi
-        
-        tar -xzf /tmp/sing-box.tar.gz -C /tmp/
-        local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}")
-        
-        if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
-            mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
-            chmod +x /usr/local/bin/sing-box
-            green "  [✔] Sing-box ($sb_version | $sb_arch) 核心拉取并部署成功！(完美适配系统架构)"
-        else
-            red " [致命错误] Sing-box 核心解压或定位失败！"; exit 1
-        fi
-        rm -rf /tmp/sing-box*
+        green "  [✔] 所有前置依赖补全完成，二维码组件 qrencode 已纳入安装。"
     else
         echo ""
-        green "  [✔] 探测到本地已存在 Sing-box 核心，跳过重复下载。"
+        green "  [✔] 所有前置依赖检查通过，二维码组件已就绪。"
     fi
+
+    ensure_singbox_core || exit 1
     sleep 1
 }
 
@@ -978,6 +1021,13 @@ generate_client_configs() {
     # 修复 Bug 3：正确输出文本流
     printf "%s" "$url_all" > "$web_dir/$sub_uuid/url.txt"
     printf "%s" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%s" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
+
+    local sub_url="http://${PUBLIC_IP}:${sub_port}/${sub_uuid}"
+    [[ "$PUBLIC_IP" == *":"* ]] && sub_url="http://[${PUBLIC_IP}]:${sub_port}/${sub_uuid}"
+    if command -v qrencode >/dev/null 2>&1; then
+        qrencode -o "$web_dir/$sub_uuid/sub_qr.png" -s 8 -m 2 "$sub_url" 2>/dev/null || true
+        qrencode -t ANSIUTF8 "$sub_url" > "$web_dir/$sub_uuid/sub_qr.txt" 2>/dev/null || true
+    fi
     
     cat << EOF > "$web_dir/$sub_uuid/clash-meta-sub.yaml"
 port: 7890
@@ -1045,8 +1095,12 @@ server {
         rewrite ^ /$sub_uuid/sub_b64.txt last;
     }
 
-    location ~ ^/$sub_uuid/(clash-meta-sub\.yaml|sing-box\.json|sub_b64\.txt)$ {
+    location ~ ^/$sub_uuid/(clash-meta-sub\.yaml|sing-box\.json|sub_b64\.txt|url\.txt|sub_qr\.txt)$ {
         add_header Content-Type 'text/plain; charset=utf-8';
+        add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0';
+    }
+
+    location = /$sub_uuid/sub_qr.png {
         add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0';
     }
 
@@ -1396,6 +1450,16 @@ showconf() {
     yellow "  ▶ [多核聚合智能订阅链接] (HTTP 极速分发版)"
     purple "    适用客户端: Sing-box / Clash Verge / v2rayN 等"
     green  "    订阅地址: ${sub_url}"
+    green  "    二维码图片: ${sub_url}/sub_qr.png"
+    echo ""
+    yellow "  ▶ [订阅二维码]"
+    if command -v qrencode >/dev/null 2>&1; then
+        qrencode -t ANSIUTF8 "$sub_url" 2>/dev/null || yellow "    二维码渲染失败，请直接复制订阅地址。"
+    elif [[ -f "/var/www/sing-box/$sub_path/sub_qr.txt" ]]; then
+        cat "/var/www/sing-box/$sub_path/sub_qr.txt"
+    else
+        yellow "    未检测到 qrencode，请重新运行安装流程补齐二维码组件。"
+    fi
     echo ""
     yellow "  ▶ [单节点直连链接]"
     purple "    适用客户端: NekoBox / v2rayNG (直接导入)"
