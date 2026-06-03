@@ -800,7 +800,7 @@ inst_vless_reality() {
     echo ""
     print_line
     yellow "  VLESS + Reality 端口与特征配置"
-    echo -en " ${LIGHT_YELLOW} ▶ 请设置主端口 (TCP) [1-65535] (强烈推荐 443，回车默认 443): ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请设置 VLESS 主端口 (TCP) [1-65535] (回车默认 443，可自定义): ${PLAIN}"
     read port || port=443
     [[ -z $port ]] && port=443
     
@@ -833,12 +833,14 @@ inst_vless_reality() {
     local listen_addr="::"
     [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
 
+    yellow "  正在写入 VLESS Reality 推荐参数：Vision + Reality + TCP Fast Open + 自适应监听..."
     jq --arg p "$port" --arg uuid "$v_uuid" --arg priv "$v_private_key" --arg sid "$v_short_id" --arg sni "$v_sni" --arg listen "$listen_addr" '
     .inbounds += [{
       "type": "vless",
       "tag": "vless-in",
       "listen": $listen,
       "listen_port": ($p | tonumber),
+      "tcp_fast_open": true,
       "users": [{"uuid": $uuid, "flow": "xtls-rprx-vision"}],
       "tls": {
         "enabled": true,
@@ -859,6 +861,8 @@ inst_vless_reality() {
     
     echo ""
     green "  [✔] VLESS + Reality 服务端已追加部署成功！"
+    yellow "  已自动写入 VLESS Reality 推荐配置：Vision + Reality + TCP Fast Open + 自适应监听。"
+    yellow "  端口保持您安装时的自定义选择；如需 TCP 系统层加速，可在主菜单 [7] 开启 BBR。"
     sleep 2
 }
 
@@ -996,7 +1000,8 @@ generate_client_configs() {
         local safe_node_name=$(NAME="$node_name" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('NAME', '')))")
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .listen_port' /etc/sing-box/config.json)
         local uuid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .users[0].uuid' /etc/sing-box/config.json)
-        local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
+        local sni=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config.json 2>/dev/null)
+        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/vless_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
 
@@ -1025,7 +1030,7 @@ generate_client_configs() {
         proxy_names="${proxy_names}
       - '${node_name}'"
         
-        local sb_vless_json="{\"type\":\"vless\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"uuid\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"packet_encoding\":\"xudp\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"utls\":{\"enabled\":true,\"fingerprint\":\"chrome\"},\"reality\":{\"enabled\":true,\"public_key\":\"${pub}\",\"short_id\":\"${sid}\"}}}"
+        local sb_vless_json="{\"type\":\"vless\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"uuid\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"packet_encoding\":\"xudp\",\"tcp_fast_open\":true,\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"utls\":{\"enabled\":true,\"fingerprint\":\"chrome\"},\"reality\":{\"enabled\":true,\"public_key\":\"${pub}\",\"short_id\":\"${sid}\"}}}"
         sb_outbounds="${sb_outbounds}${sb_vless_json},"
         sb_tags="${sb_tags}\"${node_name}\","
     fi
@@ -1487,6 +1492,7 @@ showconf() {
     yellow "  ▶ 自助排障与安全特性提醒 (必读)："
     echo -e "    ${LIGHT_GREEN}如果订阅链接无法打开，请先确认 VPS 安全组已放行 TCP 订阅端口 ${sub_port}。${PLAIN}"
     echo -e "    ${LIGHT_GREEN}如果 Hy2 节点无法连接，请确认 VPS 安全组已放行对应 UDP 主端口。${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}VLESS Reality 已在安装时写入推荐协议参数；若要提升 TCP 链路表现，可在菜单 [7] 开启 BBR。${PLAIN}"
     echo -e "    ${LIGHT_PURPLE}====================================================${PLAIN}"
     echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
@@ -1496,34 +1502,37 @@ showconf() {
 enable_bbr() {
     echo ""
     print_line
+    green "             BBR / TCP Fast Open / VLESS TCP 加速参数             "
+    print_line
+    echo ""
+
     local kernel_v=$(uname -r | cut -d. -f1)
     if [[ "$kernel_v" -lt 4 ]]; then
         red "  当前内核版本过低 ($(uname -r))，不支持开启 BBR！"
         sleep 3; return
     fi
 
-    if ! modprobe tcp_bbr 2>/dev/null; then
-        if ! grep -q "bbr" /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
-            red "  [错误] 当前系统/内核 (可能是 LXC 容器) 彻底不支持 BBR 模块！"
-            sleep 3; return
-        fi
+    yellow "  正在检测 BBR 模块与拥塞控制支持，完整输出如下："
+    modprobe tcp_bbr || true
+    echo "  可用拥塞控制: $(cat /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null || echo unknown)"
+    if ! grep -q "bbr" /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+        red "  [错误] 当前系统/内核 (可能是 LXC 容器) 不支持 BBR 模块！"
+        sleep 3; return
     fi
     
     local total_mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-    [[ -z "$total_mem_kb" ]] && total_mem_kb=1048576 
-    
-    local page_size=$(getconf PAGESIZE)
+    [[ -z "$total_mem_kb" ]] && total_mem_kb=1048576
+    local page_size=$(getconf PAGESIZE 2>/dev/null || echo 4096)
     if ! [[ "$page_size" =~ ^[0-9]+$ ]] || [[ "$page_size" -le 0 ]]; then
         page_size=4096
     fi
-    
     local mem_pages=$(( total_mem_kb / (page_size / 1024) ))
     local udp_max=$(( mem_pages / 4 ))
     [[ $udp_max -lt 65536 ]] && udp_max=65536
     local udp_mid=$(( udp_max * 3 / 4 ))
     local udp_min=$(( udp_max / 2 ))
 
-    local current_file_max=$(sysctl -n fs.file-max || echo 0)
+    local current_file_max=$(sysctl -n fs.file-max 2>/dev/null || echo 0)
     local file_max_config=""
     if [[ "$current_file_max" -lt 1048576 ]]; then
         file_max_config="fs.file-max=1048576
@@ -1531,24 +1540,37 @@ fs.nr_open=1048576"
     fi
 
     mkdir -p /etc/sysctl.d
+    cp -a /etc/sysctl.d/99-singbox-bbr.conf "/etc/sysctl.d/99-singbox-bbr.conf.bak.$(date +%F-%H%M%S)" 2>/dev/null || true
     cat << EOF > /etc/sysctl.d/99-singbox-bbr.conf
 $file_max_config
 net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
-net.core.rmem_max=26214400
+net.ipv4.tcp_fastopen=3
+net.ipv4.tcp_mtu_probing=1
+net.ipv4.ip_local_port_range=1024 65535
+net.core.rmem_max=67108864
 net.core.rmem_default=26214400
-net.core.wmem_max=26214400
+net.core.wmem_max=67108864
 net.core.wmem_default=26214400
-net.core.netdev_max_backlog=100000
+net.core.netdev_max_backlog=250000
 net.core.somaxconn=65535
 net.ipv4.udp_mem=$udp_min $udp_mid $udp_max
 EOF
     
-    sysctl -e --system >/dev/null 2>&1 || sysctl -e -p /etc/sysctl.d/99-singbox-bbr.conf >/dev/null 2>&1
-    
+    yellow "  正在应用 sysctl 参数，完整输出如下："
+    sysctl -e -p /etc/sysctl.d/99-singbox-bbr.conf
+    echo ""
+    yellow "  当前关键参数："
+    sysctl net.ipv4.tcp_congestion_control || true
+    sysctl net.core.default_qdisc || true
+    sysctl net.ipv4.tcp_fastopen || true
+    sysctl net.ipv4.tcp_mtu_probing || true
+    sysctl net.core.rmem_max || true
+    sysctl net.core.wmem_max || true
+
     if sysctl net.ipv4.tcp_congestion_control | grep -q bbr; then
         echo ""
-        green "  BBR 及极致的 UDP 缓冲区底层调优开启成功！"
+        green "  [✔] BBR + TCP Fast Open + 缓冲区参数已应用。"
     else
         echo ""
         red "  [错误] BBR 开启失败，当前内核或容器环境受限！"
@@ -1650,6 +1672,7 @@ quick_repair_and_status() {
     read temp
 }
 
+
 # =================================================================
 #  8. 主菜单控制
 # =================================================================
@@ -1679,7 +1702,7 @@ menu() {
     echo -e "  ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_GREEN}配置 出口落地代理与分流 (IP 检测 & 流媒体解锁)${PLAIN}"
     echo "----------------------------------------------------------------------------------"
     echo -e "  ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
-    echo -e "  ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_PURPLE}开启 BBR 及 UDP 极限并发加速 (强烈推荐)${PLAIN}"
+    echo -e "  ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
     echo -e "  ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
     echo -e "  ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
     echo "----------------------------------------------------------------------------------"
