@@ -126,7 +126,7 @@ open_port() {
     
     yellow " [防火墙] 正在放行 $proto 端口 $port..."
     if command -v firewall-cmd >/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
-        firewall-cmd --zone=public --add-port=$port/$proto --permanent
+        firewall-cmd --add-port=$port/$proto --permanent
         firewall-cmd --reload
     elif command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
         ufw allow $port/$proto
@@ -147,7 +147,7 @@ close_port_by_tag() {
                 iptables-save | grep -v -- "-p $proto -m $proto --dport $port -j ACCEPT" | iptables-restore
                 ip6tables-save | grep -v -- "-p $proto -m $proto --dport $port -j ACCEPT" | ip6tables-restore
                 if command -v firewall-cmd >/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
-                    firewall-cmd --zone=public --remove-port=$port/$proto --permanent
+                    firewall-cmd --remove-port=$port/$proto --permanent
                     firewall-cmd --reload
                 fi
                 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
@@ -617,7 +617,7 @@ generate_client_configs() {
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json)
         local pwd=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .users[0].password' /etc/sing-box/config.json)
         local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
-        local obfs=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .obfs.password // empty' /etc/sing-box/config.json)
+        local obfs=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .obfs?.password // empty' /etc/sing-box/config.json)
 
         local s_pwd=$(PWD="$pwd" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('PWD', '')))")
         local url="hy2://$s_pwd@$uri_ip:$bind_port/?insecure=1&sni=$sni"
@@ -674,7 +674,7 @@ generate_client_configs() {
     fi
 
     echo -e "$url_all" > "$web_dir/$sub_uuid/url.txt"
-    echo -e "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || echo -e "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
+    printf "%b" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%b" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
     
     cat << EOF > "$web_dir/$sub_uuid/clash-meta-sub.yaml"
 port: 7890
