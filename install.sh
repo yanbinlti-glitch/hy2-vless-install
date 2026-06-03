@@ -237,7 +237,6 @@ check_env() {
         if ! command -v "$cmd" > /dev/null; then missing=1; fi
     done
 
-    # 针对 Alpine 环境的动态库拦截修复
     if [[ $SYSTEM == "Alpine" ]]; then
         if ! apk info -e libc6-compat >/dev/null 2>&1 || ! apk info -e gcompat >/dev/null 2>&1; then
             missing=1
@@ -248,7 +247,6 @@ check_env() {
         yellow "  发现缺失前置组件，正在为您拉取安装 (日志全开)..."
         [[ ! $SYSTEM == "CentOS" ]] && { $PKG_UPDATE || true; }
         
-        # 强行注入 libc6-compat 与 gcompat 解决 Alpine 执行异常
         if [[ $SYSTEM == "Alpine" ]]; then
             $PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat libqrencode-tools jq coreutils nginx tar libc6-compat gcompat || { red " [错误] 依赖安装失败！"; exit 1; }
         elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" || $SYSTEM == "Alma" || $SYSTEM == "Rocky" ]]; then
@@ -269,7 +267,6 @@ check_env() {
         local arch=$(uname -m)
         local sb_arch=""
         
-        # 核心拦截网络：全平台 CPU 架构级精准匹配
         case "$arch" in
             x86_64 | amd64)      sb_arch="amd64" ;;
             aarch64 | arm64)     sb_arch="arm64" ;;
@@ -647,7 +644,7 @@ inst_singbox() {
 }
 
 # =================================================================
-#  6. 核心业务处理与多态聚合订阅引擎 (HTTP 降级兼容版 + 安全指纹升级版)
+#  6. 核心业务处理与多态聚合订阅引擎 (完全修复 YAML 换行 Bug)
 # =================================================================
 generate_client_configs() {
     realip
@@ -692,7 +689,10 @@ generate_client_configs() {
         local url="hy2://$s_pwd@$uri_ip:$bind_port/?pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
         url="${url}#${safe_node_name}"
-        url_all="${url_all}${url}\n"
+        
+        # 修复 Bug 1：使用标准 Bash 物理换行，防止写死字面量 \n
+        url_all="${url_all}${url}
+"
 
         proxy_yaml="${proxy_yaml}
   - name: '${node_name}'
@@ -707,7 +707,10 @@ generate_client_configs() {
         [[ -n "$obfs" ]] && proxy_yaml="${proxy_yaml}
     obfs: salamander
     obfs-password: \"$obfs\""
-        proxy_names="${proxy_names}\n      - '${node_name}'"
+        
+        # 修复 Bug 2：防止 YAML 数组解析报错
+        proxy_names="${proxy_names}
+      - '${node_name}'"
         
         local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"up_mbps\":0,\"down_mbps\":0,\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":false,\"certificate_pins\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
         [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
@@ -728,7 +731,9 @@ generate_client_configs() {
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
 
         local url="vless://$uuid@$uri_ip:$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#${safe_node_name}"
-        url_all="${url_all}${url}\n"
+        
+        url_all="${url_all}${url}
+"
 
         proxy_yaml="${proxy_yaml}
   - name: '${node_name}'
@@ -746,7 +751,9 @@ generate_client_configs() {
     reality-opts:
       public-key: \"$pub\"
       short-id: \"$sid\""
-        proxy_names="${proxy_names}\n      - '${node_name}'"
+        
+        proxy_names="${proxy_names}
+      - '${node_name}'"
         
         local sb_vless_json="{\"type\":\"vless\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"uuid\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"packet_encoding\":\"xudp\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"utls\":{\"enabled\":true,\"fingerprint\":\"chrome\"},\"reality\":{\"enabled\":true,\"public_key\":\"${pub}\",\"short_id\":\"${sid}\"}}}"
         sb_outbounds="${sb_outbounds}${sb_vless_json},"
@@ -756,8 +763,9 @@ generate_client_configs() {
     sb_outbounds="${sb_outbounds%,}"
     sb_tags="${sb_tags%,}"
 
-    echo -e "$url_all" > "$web_dir/$sub_uuid/url.txt"
-    printf "%b" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%b" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
+    # 修复 Bug 3：正确输出文本流
+    printf "%s" "$url_all" > "$web_dir/$sub_uuid/url.txt"
+    printf "%s" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%s" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
     
     cat << EOF > "$web_dir/$sub_uuid/clash-meta-sub.yaml"
 port: 7890
