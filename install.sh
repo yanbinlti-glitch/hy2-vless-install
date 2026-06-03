@@ -4,7 +4,7 @@ export LANG=en_US.UTF-8
 export DEBIAN_FRONTEND=noninteractive
 
 # =================================================================
-#  1. 现代化极简 UI 色彩库 & 全局中断防崩溃保护 (保持原样)
+#  1. 现代化极简 UI 色彩库 & 全局中断防崩溃保护
 # =================================================================
 RED="\033[31m"
 GREEN="\033[32m"
@@ -29,7 +29,7 @@ print_line() {
 trap 'echo -e "\n\n ${LIGHT_RED}[警告] 检测到强行中断，脚本已安全退出。${PLAIN}"; exit 1' INT TERM
 
 # =================================================================
-#  2. 基础系统判定与快捷命令覆写 (优化了 OS 探测逻辑提升速度)
+#  2. 基础系统判定与快捷命令覆写
 # =================================================================
 [[ $EUID -ne 0 ]] && red " [错误] 请在 root 用户下运行此脚本！" && exit 1
 
@@ -42,7 +42,6 @@ if [[ -f "$SCRIPT_PATH" && "$(head -n 1 "$SCRIPT_PATH" 2>/dev/null)" == "#!/bin/
     [[ -f "/usr/bin/hy2" ]] && rm -f "/usr/bin/hy2"
 fi
 
-# 优化项：更高效的 OS 探测 (短路匹配，消除多余系统命令报错)
 if [[ -f /etc/os-release ]]; then
     source /etc/os-release
     SYS=$ID
@@ -106,7 +105,7 @@ gen_random_str() {
 }
 
 # =================================================================
-#  3. 服务管理与标签化防火墙管控 (保持原样)
+#  3. 服务管理与标签化防火墙管控
 # =================================================================
 svc_start()   { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" start; else systemctl start "$1"; fi; }
 svc_stop()    { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" stop; else systemctl stop "$1"; fi; }
@@ -181,7 +180,7 @@ close_port_by_tag() {
 }
 
 # =================================================================
-#  4. 依赖环境检查、核心拉取与节点探测 (优化最新版拉取)
+#  4. 依赖环境检查、核心拉取与节点探测
 # =================================================================
 check_env() {
     clear
@@ -222,7 +221,6 @@ check_env() {
         green "  所有前置依赖检查通过，环境完美！"
     fi
 
-    # --- 物理前置的 Sing-box 核心拉取逻辑 (突破 API 限流优化版) ---
     if [[ ! -f "/usr/local/bin/sing-box" ]]; then
         echo ""
         yellow "  正在拉取 Sing-box 最新版二进制核心 (全量输出下载日志)..."
@@ -231,14 +229,12 @@ check_env() {
         [[ "$arch" == "aarch64" ]] && sb_arch="arm64"
         [[ "$arch" == "s390x" ]] && sb_arch="s390x"
 
-        # 核心优化：利用重定向直接抓取最新 Release，无视 GitHub API 的 60 次限流
         local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r')
-        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.10.1" # 只有在网络极度恶劣时才使用硬编码备用最新版
+        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.10.1" 
         
         local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
         
         rm -rf /tmp/sing-box*
-        # 优先官方源，ghfast 仅作 Fallback
         wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
         
         if [[ ! -s /tmp/sing-box.tar.gz ]]; then
@@ -276,7 +272,7 @@ check_installed_nodes() {
 }
 
 # =================================================================
-#  5. 安装交互核心流程 (保持原样，JSON 组装逻辑未动)
+#  5. 安装交互核心流程
 # =================================================================
 inst_cert() {
     yellow "  系统已统一采用安全自签模式，开始生成伪装 ECC 密钥对..."
@@ -325,7 +321,7 @@ inst_sub_port(){
         [[ -z "$use_hist" ]] && use_hist="y"
         if [[ "$use_hist" == "y" || "$use_hist" == "Y" ]]; then
             sub_port_input=$history_port
-            green " 沿用历史订阅 HTTPS 端口: $sub_port_input"
+            green " 沿用历史订阅 HTTP 端口: $sub_port_input"
             return
         fi
     fi
@@ -345,7 +341,7 @@ inst_sub_port(){
         read sub_port_input || exit 1
         [[ -z $sub_port_input ]] && sub_port_input=$(shuf -i 10000-30000 -n 1)
     done
-    green " 订阅 HTTPS 端口已设置为: $sub_port_input"
+    green " 订阅 HTTP 端口已设置为: $sub_port_input"
     open_port $sub_port_input "tcp" "sub"
     echo "$sub_port_input" > /etc/sing-box/sub_port.txt
 }
@@ -463,7 +459,6 @@ inst_hysteria2() {
         green " 已开启混淆，密钥为: $obfs_pwd"
     fi
     
-    # 结构化 Append JSON 防御
     jq --arg p "$port" --arg pwd "$auth_pwd" --arg cp "/etc/sing-box/cert.crt" --arg kp "/etc/sing-box/private.key" '
     .inbounds += [{
       "type": "hysteria2",
@@ -532,7 +527,6 @@ inst_vless_reality() {
     [[ -z $custom_node_name ]] && custom_node_name="Vless_Reality_Node"
     echo "$custom_node_name" > /etc/sing-box/vless_name.txt
     
-    # 结构化 Append JSON 防御
     jq --arg p "$port" --arg uuid "$v_uuid" --arg priv "$v_private_key" --arg sid "$v_short_id" --arg sni "$v_sni" '
     .inbounds += [{
       "type": "vless",
@@ -603,7 +597,7 @@ inst_singbox() {
 }
 
 # =================================================================
-#  6. 核心业务处理与多态聚合订阅引擎 (HTTPS 强加密 + 安全指纹升级版)
+#  6. 核心业务处理与多态聚合订阅引擎 (HTTP 降级兼容版 + 安全指纹升级版)
 # =================================================================
 generate_client_configs() {
     realip
@@ -641,18 +635,15 @@ generate_client_configs() {
         local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
         local obfs=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .obfs?.password // empty' /etc/sing-box/config.json)
 
-        # 核心安全升级: 提取自签证书双重特征指纹 (应对 Xray 2026 禁用 insecure)
         local cert_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
         local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
 
-        # 1. Base64 URL (适配 v2rayN) - 挂载 pinSHA256
         local s_pwd=$(PWD="$pwd" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('PWD', '')))")
         local url="hy2://$s_pwd@$uri_ip:$bind_port/?pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
         url="${url}#${safe_node_name}"
         url_all="${url_all}${url}\n"
 
-        # 2. Clash Meta YAML
         proxy_yaml="${proxy_yaml}
   - name: '${node_name}'
     type: hysteria2
@@ -668,7 +659,6 @@ generate_client_configs() {
     obfs-password: \"$obfs\""
         proxy_names="${proxy_names}\n      - '${node_name}'"
         
-        # 3. Sing-box 原生 JSON - 关闭 insecure 并挂载 certificate_pins
         local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"up_mbps\":0,\"down_mbps\":0,\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":false,\"certificate_pins\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
         [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
         sb_hy2_json="${sb_hy2_json}}"
@@ -687,40 +677,35 @@ generate_client_configs() {
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
 
-        # 1. Base64 URL
         local url="vless://$uuid@$uri_ip:$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#${safe_node_name}"
         url_all="${url_all}${url}\n"
 
-        # 2. Clash Meta YAML
         proxy_yaml="${proxy_yaml}
   - name: '${node_name}'
     type: vless
     server: \"$yaml_json_ip\"
     port: $bind_port
-    uuid: $uuid
+    uuid: \"$uuid\"
     network: tcp
     tls: true
     udp: true
     xudp: true
     flow: xtls-rprx-vision
-    servername: $sni
+    servername: \"$sni\"
     client-fingerprint: chrome
     reality-opts:
-      public-key: $pub
-      short-id: $sid"
+      public-key: \"$pub\"
+      short-id: \"$sid\""
         proxy_names="${proxy_names}\n      - '${node_name}'"
         
-        # 3. Sing-box 原生 JSON
         local sb_vless_json="{\"type\":\"vless\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"uuid\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"packet_encoding\":\"xudp\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"utls\":{\"enabled\":true,\"fingerprint\":\"chrome\"},\"reality\":{\"enabled\":true,\"public_key\":\"${pub}\",\"short_id\":\"${sid}\"}}}"
         sb_outbounds="${sb_outbounds}${sb_vless_json},"
         sb_tags="${sb_tags}\"${node_name}\","
     fi
 
-    # 清除末尾逗号
     sb_outbounds="${sb_outbounds%,}"
     sb_tags="${sb_tags%,}"
 
-    # 输出文件
     echo -e "$url_all" > "$web_dir/$sub_uuid/url.txt"
     printf "%b" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%b" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
     
@@ -758,7 +743,6 @@ EOF
 }
 EOF
 
-    # 核心安全提升: 收紧越权访问权限
     chown -R www-data:www-data "$web_dir" 2>/dev/null || chown -R nginx:nginx "$web_dir" 2>/dev/null
     chmod -R 750 "$web_dir"
 
@@ -774,18 +758,12 @@ EOF
     fi
     
     local listen_ipv6=""
-    [[ -f /proc/net/if_inet6 ]] && listen_ipv6="listen [::]:$sub_port ssl;"
+    [[ -f /proc/net/if_inet6 ]] && listen_ipv6="listen [::]:$sub_port;"
 
-    # 强制 TLS 与智能 UA 感应分流
     cat << EOF > "$nginx_conf_file"
 server {
-    listen $sub_port ssl;
+    listen $sub_port;
     $listen_ipv6
-    
-    ssl_certificate /etc/sing-box/cert.crt;
-    ssl_certificate_key /etc/sing-box/private.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
     
     root $web_dir;
 
@@ -811,7 +789,6 @@ EOF
         rm -f /etc/nginx/sites-enabled/default
     fi
 
-    # Bug 修复：安全平滑重载 Nginx
     if nginx -t >/dev/null 2>&1; then
         svc_enable nginx
         if is_svc_active nginx; then
@@ -834,7 +811,6 @@ clean_env() {
     svc_disable sing-box
     
     rm -f /etc/nginx/conf.d/sing-box-sub.conf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/sites-enabled/sing-box-sub.conf /etc/nginx/http.d/sing-box-sub.conf
-    # Bug 修复：清理时进行安全重载验证
     if is_svc_active nginx; then
         if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
     fi
@@ -855,7 +831,7 @@ clean_env() {
 }
 
 # =================================================================
-#  7. 二级管控面板与辅助工具 (保持界面 UI 原样)
+#  7. 二级管控面板与辅助工具
 # =================================================================
 remove_node() {
     check_installed_nodes
@@ -1105,8 +1081,8 @@ showconf() {
     local sub_path=$(cat /etc/sing-box/sub_path.txt 2>/dev/null)
     [[ -z "$sub_port" ]] && return
     
-    local sub_url="https://${PUBLIC_IP}:${sub_port}/${sub_path}"
-    [[ "$PUBLIC_IP" == *":"* ]] && sub_url="https://[${PUBLIC_IP}]:${sub_port}/${sub_path}"
+    local sub_url="http://${PUBLIC_IP}:${sub_port}/${sub_path}"
+    [[ "$PUBLIC_IP" == *":"* ]] && sub_url="http://[${PUBLIC_IP}]:${sub_port}/${sub_path}"
 
     local raw_url=$(cat "/var/www/sing-box/$sub_path/url.txt" 2>/dev/null)
     
@@ -1116,7 +1092,7 @@ showconf() {
     green "               Sing-box 节点配置与全平台智能订阅           "
     print_line
     echo ""
-    yellow "  ▶ [多核聚合智能订阅链接] (强制 HTTPS 加密传输)"
+    yellow "  ▶ [多核聚合智能订阅链接] (HTTP 极速分发版)"
     purple "    适用客户端: Sing-box / Clash Verge / v2rayN 等"
     green  "    订阅地址: ${sub_url}"
     echo ""
@@ -1129,8 +1105,7 @@ showconf() {
     print_line
     yellow "  ▶ 自助排障与安全特性提醒 (必读)："
     echo -e "    ${LIGHT_GREEN}脚本已通过底层提取自签证书真实指纹，完美适配未来 Xray 强鉴权特性！${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}您在旧版客户端添加订阅时，可开启【跳过证书验证 (Skip Cert Verify)】${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}但对于原版 Sing-box 客户端，无需任何设置，安全隧道自动建联！${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}订阅链接已降级为 HTTP 协议，彻底解决客户端导入时报 SSL 证书错误的问题。${PLAIN}"
     echo -e "    ${LIGHT_PURPLE}====================================================${PLAIN}"
     echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
@@ -1170,7 +1145,6 @@ enable_bbr() {
     local current_file_max=$(sysctl -n fs.file-max || echo 0)
     local file_max_config=""
     if [[ "$current_file_max" -lt 1048576 ]]; then
-        # Bug 修复: 采用真实换行保证 Sysctl 解析正确
         file_max_config="fs.file-max=1048576
 fs.nr_open=1048576"
     fi
@@ -1228,7 +1202,7 @@ singbox_switch() {
 }
 
 # =================================================================
-#  8. 主菜单控制 (Sing-box 极简重构版 - UI 完全保留)
+#  8. 主菜单控制
 # =================================================================
 menu() {
     local status_ui="${LIGHT_RED}● 未运行 / 异常${PLAIN}"
