@@ -971,6 +971,7 @@ generate_client_configs() {
         proxy_yaml="${proxy_yaml}
   - name: '${node_name}'
     type: hysteria2
+    udp: true
     server: \"$yaml_json_ip\"
     port: $bind_port
     password: '${pwd}'
@@ -986,7 +987,7 @@ generate_client_configs() {
         proxy_names="${proxy_names}
       - '${node_name}'"
         
-        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"up_mbps\":0,\"down_mbps\":0,\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":true,\"certificate_public_key_sha256\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
+        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":true,\"certificate_public_key_sha256\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
         [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
         sb_hy2_json="${sb_hy2_json}}"
         
@@ -1492,7 +1493,7 @@ showconf() {
     yellow "  ▶ 自助排障与安全特性提醒 (必读)："
     echo -e "    ${LIGHT_GREEN}如果订阅链接无法打开，请先确认 VPS 安全组已放行 TCP 订阅端口 ${sub_port}。${PLAIN}"
     echo -e "    ${LIGHT_GREEN}如果 Hy2 节点无法连接，请确认 VPS 安全组已放行对应 UDP 主端口。${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}VLESS Reality 已在安装时写入推荐协议参数；若要提升 TCP 链路表现，可在菜单 [7] 开启 BBR。${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}Hy2 与 VLESS 已在安装时写入推荐协议参数；若要提升 UDP/TCP 链路表现，可在菜单 [7] 开启 BBR/缓冲区优化。${PLAIN}"
     echo -e "    ${LIGHT_PURPLE}====================================================${PLAIN}"
     echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
@@ -1502,7 +1503,7 @@ showconf() {
 enable_bbr() {
     echo ""
     print_line
-    green "             BBR / TCP Fast Open / VLESS TCP 加速参数             "
+    green "             BBR / TCP Fast Open / Hy2 UDP / VLESS TCP 加速参数             "
     print_line
     echo ""
 
@@ -1570,7 +1571,7 @@ EOF
 
     if sysctl net.ipv4.tcp_congestion_control | grep -q bbr; then
         echo ""
-        green "  [✔] BBR + TCP Fast Open + 缓冲区参数已应用。"
+        green "  [✔] BBR + TCP Fast Open + Hy2 UDP / VLESS TCP 缓冲区参数已应用。"
     else
         echo ""
         red "  [错误] BBR 开启失败，当前内核或容器环境受限！"
