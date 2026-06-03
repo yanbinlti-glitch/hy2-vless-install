@@ -161,7 +161,12 @@ open_port() {
     local proto=$2
     local tag=$3
     mkdir -p /etc/sing-box
-    echo "$tag:$proto:$port" >> /etc/sing-box/.firewall_state
+
+    # 防止重复写入状态文件，避免多次运行脚本后防火墙状态膨胀。
+    touch /etc/sing-box/.firewall_state
+    if ! grep -qxF "$tag:$proto:$port" /etc/sing-box/.firewall_state 2>/dev/null; then
+        echo "$tag:$proto:$port" >> /etc/sing-box/.firewall_state
+    fi
     
     yellow " [防火墙] 正在放行 $proto 端口 $port..."
     if command -v firewall-cmd >/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
@@ -170,12 +175,21 @@ open_port() {
     elif command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
         ufw allow $port/$proto
     else
-        iptables -I INPUT -p $proto --dport $port -j ACCEPT
-        ip6tables -I INPUT -p $proto --dport $port -j ACCEPT
+        if iptables -C INPUT -p "$proto" --dport "$port" -j ACCEPT 2>/dev/null; then
+            green " [防火墙] IPv4 $proto 端口 $port 已存在放行规则。"
+        else
+            iptables -I INPUT -p "$proto" --dport "$port" -j ACCEPT
+        fi
+        if command -v ip6tables >/dev/null 2>&1; then
+            if ip6tables -C INPUT -p "$proto" --dport "$port" -j ACCEPT 2>/dev/null; then
+                green " [防火墙] IPv6 $proto 端口 $port 已存在放行规则。"
+            else
+                ip6tables -I INPUT -p "$proto" --dport "$port" -j ACCEPT 2>/dev/null || true
+            fi
+        fi
         save_iptables
     fi
 }
-
 close_port_by_tag() {
     local target_tag=$1
     if [[ -f /etc/sing-box/.firewall_state ]]; then
@@ -251,13 +265,15 @@ switch_system_source_auto() {
         cp /etc/apk/repositories /etc/apk/repositories.bak.$(date +%F-%H%M%S) || true
         sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g; s#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories
     elif [[ $SYSTEM == "Debian" ]]; then
-        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) || true
-        sed -i 's#http://deb.debian.org#https://mirrors.aliyun.com#g; s#https://deb.debian.org#https://mirrors.aliyun.com#g' /etc/apt/sources.list || true
-        sed -i 's#http://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g; s#https://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g' /etc/apt/sources.list || true
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        cp -r /etc/apt/sources.list.d /etc/apt/sources.list.d.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        sed -i 's#http://deb.debian.org#https://mirrors.aliyun.com#g; s#https://deb.debian.org#https://mirrors.aliyun.com#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+        sed -i 's#http://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g; s#https://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
     elif [[ $SYSTEM == "Ubuntu" ]]; then
-        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) || true
-        sed -i 's#http://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g; s#https://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list || true
-        sed -i 's#http://security.ubuntu.com#https://mirrors.aliyun.com#g; s#https://security.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list || true
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        cp -r /etc/apt/sources.list.d /etc/apt/sources.list.d.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        sed -i 's#http://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g; s#https://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+        sed -i 's#http://security.ubuntu.com#https://mirrors.aliyun.com#g; s#https://security.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
     elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" ]]; then
         cp -r /etc/yum.repos.d /etc/yum.repos.d.bak.$(date +%F-%H%M%S) || true
         sed -i 's/^mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/*.repo || true
@@ -431,7 +447,7 @@ inst_cert() {
     openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$cert_sni"
     
     chmod 644 "$cert_path"
-    chmod 644 "$key_path"
+    chmod 600 "$key_path"
     echo "$cert_sni" > /etc/sing-box/cert_sni.txt
     green "  自签证书 ($cert_sni) 生成并降权授权成功！"
 }
@@ -448,6 +464,7 @@ inst_sub_port(){
         if [[ "$use_hist" == "y" || "$use_hist" == "Y" ]]; then
             sub_port_input=$history_port
             green " 沿用历史订阅 HTTP 端口: $sub_port_input"
+            open_port "$sub_port_input" "tcp" "sub"
             return
         fi
     fi
@@ -639,11 +656,11 @@ ensure_singbox_core() {
         *) red " [致命错误] Sing-box 暂不支持您的 CPU 架构: $arch！"; return 1 ;;
     esac
 
-    local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '
-')
+    local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r\n')
     [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.12.0"
     local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
 
+    mkdir -p /usr/local/bin
     rm -rf /tmp/sing-box*
     wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
     if [[ ! -s /tmp/sing-box.tar.gz ]]; then
