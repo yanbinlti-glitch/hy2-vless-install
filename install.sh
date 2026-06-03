@@ -180,7 +180,7 @@ close_port_by_tag() {
 }
 
 # =================================================================
-#  4. 依赖环境检查、核心拉取与节点探测
+#  4. 依赖环境检查、核心拉取与节点探测 (全平台兼容增强版)
 # =================================================================
 check_env() {
     clear
@@ -203,12 +203,20 @@ check_env() {
         if ! command -v "$cmd" > /dev/null; then missing=1; fi
     done
 
+    # 针对 Alpine 环境的动态库拦截修复
+    if [[ $SYSTEM == "Alpine" ]]; then
+        if ! apk info -e libc6-compat >/dev/null 2>&1 || ! apk info -e gcompat >/dev/null 2>&1; then
+            missing=1
+        fi
+    fi
+
     if [[ $missing -eq 1 ]]; then
         yellow "  发现缺失前置组件，正在为您拉取安装 (日志全开)..."
         [[ ! $SYSTEM == "CentOS" ]] && { $PKG_UPDATE || true; }
         
+        # 强行注入 libc6-compat 与 gcompat 解决 Alpine 执行异常
         if [[ $SYSTEM == "Alpine" ]]; then
-            $PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat libqrencode-tools jq coreutils nginx tar || { red " [错误] 依赖安装失败！"; exit 1; }
+            $PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat libqrencode-tools jq coreutils nginx tar libc6-compat gcompat || { red " [错误] 依赖安装失败！"; exit 1; }
         elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" || $SYSTEM == "Alma" || $SYSTEM == "Rocky" ]]; then
             $PKG_INSTALL epel-release || true
             $PKG_INSTALL curl wget sudo procps iptables iptables-services iproute python3 openssl socat qrencode jq coreutils nginx tar || { red " [错误] 依赖安装失败！"; exit 1; }
@@ -223,11 +231,19 @@ check_env() {
 
     if [[ ! -f "/usr/local/bin/sing-box" ]]; then
         echo ""
-        yellow "  正在拉取 Sing-box 最新版二进制核心 (全量输出下载日志)..."
+        yellow "  正在拉取 Sing-box 最新版二进制核心 (全架构适配)..."
         local arch=$(uname -m)
-        local sb_arch="amd64"
-        [[ "$arch" == "aarch64" ]] && sb_arch="arm64"
-        [[ "$arch" == "s390x" ]] && sb_arch="s390x"
+        local sb_arch=""
+        
+        # 核心拦截网络：全平台 CPU 架构级精准匹配
+        case "$arch" in
+            x86_64 | amd64)      sb_arch="amd64" ;;
+            aarch64 | arm64)     sb_arch="arm64" ;;
+            armv7* | armv6*)     sb_arch="armv7" ;;
+            i386 | i686)         sb_arch="386" ;;
+            s390x)               sb_arch="s390x" ;;
+            *) red " [致命错误] Sing-box 暂不支持您的 CPU 架构: $arch！" && exit 1 ;;
+        esac
 
         local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r')
         [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.10.1" 
@@ -248,7 +264,7 @@ check_env() {
         if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
             mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
             chmod +x /usr/local/bin/sing-box
-            green "  [✔] Sing-box ($sb_version) 核心拉取并部署成功！(完美适配最新客户端)"
+            green "  [✔] Sing-box ($sb_version | $sb_arch) 核心拉取并部署成功！(完美适配系统架构)"
         else
             red " [致命错误] Sing-box 核心解压或定位失败！"; exit 1
         fi
