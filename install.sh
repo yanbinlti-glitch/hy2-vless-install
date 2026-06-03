@@ -82,7 +82,8 @@ esac
 
 PUBLIC_IP=""
 realip() {
-    if [[ -n "$PUBLIC_IP" && "$PUBLIC_IP" != *.* && "$PUBLIC_IP" != *:* ]]; then
+    # 已经拿到合法 IPv4/IPv6 时直接复用，避免重复请求公网 IP 服务
+    if [[ -n "$PUBLIC_IP" && ( "$PUBLIC_IP" == *.* || "$PUBLIC_IP" == *:* ) ]]; then
         return
     fi
     local ip=""
@@ -109,6 +110,7 @@ gen_random_str() {
 # =================================================================
 svc_start()   { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" start; else systemctl start "$1"; fi; }
 svc_stop()    { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" stop; else systemctl stop "$1"; fi; }
+svc_restart() { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" restart; else systemctl restart "$1"; fi; }
 svc_enable()  { if [[ $SYSTEM == "Alpine" ]]; then rc-update add "$1" default; else systemctl enable "$1"; fi; }
 svc_disable() { if [[ $SYSTEM == "Alpine" ]]; then rc-update del "$1" default; else systemctl disable "$1"; fi; }
 
@@ -441,7 +443,17 @@ build_base_json() {
     cat << EOF > /etc/sing-box/config.json
 {
   "log": { "level": "info", "timestamp": true },
-  "dns": { "servers": [ { "tag": "google", "address": "8.8.8.8", "detour": "direct" } ] },
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "google",
+        "server": "8.8.8.8",
+        "server_port": 53,
+        "detour": "direct"
+      }
+    ]
+  },
   "inbounds": [],
   "outbounds": [
     { "type": "direct", "tag": "direct" },
@@ -457,6 +469,60 @@ build_base_json() {
   }
 }
 EOF
+}
+
+
+migrate_legacy_dns_config() {
+    # 兼容 sing-box 1.12+：自动把旧版 dns.servers[].address 迁移为新版 server/type 写法
+    [[ -f /etc/sing-box/config.json ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+
+    if jq -e '.dns.servers[]? | select((has("address")) and ((has("type") | not) or (.type == null)))' /etc/sing-box/config.json >/dev/null 2>&1; then
+        yellow "  检测到旧版 DNS 配置，正在自动迁移为 sing-box 1.12+ 新格式..."
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns.$(date +%F-%H%M%S)" 2>/dev/null || true
+
+        jq '
+          .dns.servers |= map(
+            if (has("address") and ((has("type") | not) or (.type == null))) then
+              . as $old |
+              {
+                "type": "udp",
+                "tag": ($old.tag // "google"),
+                "server": $old.address,
+                "server_port": ($old.server_port // 53)
+              }
+              + (if (($old.detour // "") != "") then {"detour": $old.detour} else {} end)
+            else
+              .
+            end
+          )
+        ' /etc/sing-box/config.json > /tmp/sb_dns.json && mv /tmp/sb_dns.json /etc/sing-box/config.json
+        chmod 600 /etc/sing-box/config.json
+        green "  [✔] DNS 配置迁移完成。"
+    fi
+}
+
+check_singbox_config() {
+    migrate_legacy_dns_config
+    if [[ -x /usr/local/bin/sing-box && -f /etc/sing-box/config.json ]]; then
+        /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/tmp/sing-box-check.log 2>&1
+        local rc=$?
+        if [[ $rc -ne 0 ]]; then
+            red "  [致命错误] Sing-box 配置校验失败，服务未重启。详细错误如下："
+            cat /tmp/sing-box-check.log
+            return $rc
+        fi
+    fi
+    return 0
+}
+
+restart_singbox_checked() {
+    check_singbox_config || return 1
+    if is_svc_active sing-box; then
+        svc_restart sing-box
+    else
+        svc_start sing-box
+    fi
 }
 
 inst_hysteria2() {
@@ -522,7 +588,7 @@ inst_hysteria2() {
     
     chmod 600 /etc/sing-box/config.json
     svc_enable sing-box
-    svc_start sing-box
+    restart_singbox_checked || return 1
     generate_client_configs
     
     echo ""
@@ -595,7 +661,7 @@ inst_vless_reality() {
     
     chmod 600 /etc/sing-box/config.json
     svc_enable sing-box
-    svc_start sing-box
+    restart_singbox_checked || return 1
     generate_client_configs
     
     echo ""
@@ -605,6 +671,7 @@ inst_vless_reality() {
 
 inst_singbox() {
     check_env
+    migrate_legacy_dns_config
     check_installed_nodes
     
     if [[ $has_hy2 -eq 1 && $has_vless -eq 1 ]]; then
@@ -686,7 +753,7 @@ generate_client_configs() {
         local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
 
         local s_pwd=$(PWD="$pwd" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('PWD', '')))")
-        local url="hy2://$s_pwd@$uri_ip:$bind_port/?pinSHA256=$cert_pin&sni=$sni"
+        local url="hysteria2://$s_pwd@$uri_ip:$bind_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
         url="${url}#${safe_node_name}"
         
@@ -712,7 +779,7 @@ generate_client_configs() {
         proxy_names="${proxy_names}
       - '${node_name}'"
         
-        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"up_mbps\":0,\"down_mbps\":0,\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":false,\"certificate_pins\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
+        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"up_mbps\":0,\"down_mbps\":0,\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":true,\"certificate_public_key_sha256\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
         [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
         sb_hy2_json="${sb_hy2_json}}"
         
@@ -1251,9 +1318,9 @@ singbox_switch() {
     echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
-        1 ) svc_start sing-box; green "  Sing-box 核心已启动！"; sleep 2 ;;
+        1 ) restart_singbox_checked && green "  Sing-box 核心已启动！"; sleep 2 ;;
         2 ) svc_stop sing-box; yellow "  Sing-box 核心已停止！"; sleep 2 ;;
-        3 ) svc_stop sing-box; svc_start sing-box; if is_svc_active nginx; then if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi; fi; green "  核心服务已重启！"; sleep 2 ;;
+        3 ) restart_singbox_checked && { if is_svc_active nginx; then if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi; fi; green "  核心服务已重启！"; }; sleep 2 ;;
         0 ) return ;;
         * ) red "  输入无效"; sleep 1 ;;
     esac
