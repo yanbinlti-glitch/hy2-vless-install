@@ -214,6 +214,20 @@ run_with_timeout() {
     fi
 }
 
+run_logged_with_timeout() {
+    local seconds="$1"
+    local logfile="$2"
+    shift 2
+    : > "$logfile"
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" bash -c "$*" 2>&1 | tee -a "$logfile"
+        return ${PIPESTATUS[0]}
+    else
+        bash -c "$*" 2>&1 | tee -a "$logfile"
+        return ${PIPESTATUS[0]}
+    fi
+}
+
 pkg_update_fast_cmd() {
     case "$SYSTEM" in
         Alpine)
@@ -234,21 +248,21 @@ pkg_update_fast_cmd() {
 switch_system_source_auto() {
     yellow "  默认软件源响应异常，正在自动备份并切换至 Aliyun 镜像源..."
     if [[ $SYSTEM == "Alpine" ]]; then
-        cp /etc/apk/repositories /etc/apk/repositories.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+        cp /etc/apk/repositories /etc/apk/repositories.bak.$(date +%F-%H%M%S) || true
         sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g; s#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories
     elif [[ $SYSTEM == "Debian" ]]; then
-        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) 2>/dev/null || true
-        sed -i 's#http://deb.debian.org#https://mirrors.aliyun.com#g; s#https://deb.debian.org#https://mirrors.aliyun.com#g' /etc/apt/sources.list 2>/dev/null || true
-        sed -i 's#http://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g; s#https://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g' /etc/apt/sources.list 2>/dev/null || true
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) || true
+        sed -i 's#http://deb.debian.org#https://mirrors.aliyun.com#g; s#https://deb.debian.org#https://mirrors.aliyun.com#g' /etc/apt/sources.list || true
+        sed -i 's#http://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g; s#https://security.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g' /etc/apt/sources.list || true
     elif [[ $SYSTEM == "Ubuntu" ]]; then
-        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) 2>/dev/null || true
-        sed -i 's#http://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g; s#https://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list 2>/dev/null || true
-        sed -i 's#http://security.ubuntu.com#https://mirrors.aliyun.com#g; s#https://security.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list 2>/dev/null || true
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%F-%H%M%S) || true
+        sed -i 's#http://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g; s#https://[a-zA-Z0-9.-]*archive.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list || true
+        sed -i 's#http://security.ubuntu.com#https://mirrors.aliyun.com#g; s#https://security.ubuntu.com#https://mirrors.aliyun.com#g' /etc/apt/sources.list || true
     elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" ]]; then
-        cp -r /etc/yum.repos.d /etc/yum.repos.d.bak.$(date +%F-%H%M%S) 2>/dev/null || true
-        sed -i 's/^mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/*.repo 2>/dev/null || true
-        sed -i 's/^#baseurl=/baseurl=/g' /etc/yum.repos.d/*.repo 2>/dev/null || true
-        sed -i 's#mirror.centos.org#mirrors.aliyun.com#g; s#download.fedoraproject.org#mirrors.aliyun.com#g' /etc/yum.repos.d/*.repo 2>/dev/null || true
+        cp -r /etc/yum.repos.d /etc/yum.repos.d.bak.$(date +%F-%H%M%S) || true
+        sed -i 's/^mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/*.repo || true
+        sed -i 's/^#baseurl=/baseurl=/g' /etc/yum.repos.d/*.repo || true
+        sed -i 's#mirror.centos.org#mirrors.aliyun.com#g; s#download.fedoraproject.org#mirrors.aliyun.com#g' /etc/yum.repos.d/*.repo || true
     fi
     green "  [✔] 镜像源切换完成。"
 }
@@ -263,7 +277,7 @@ auto_source_guard() {
 
     local probe_cmd
     probe_cmd="$(pkg_update_fast_cmd)"
-    if run_with_timeout 35 "$probe_cmd" >/tmp/singbox_source_probe.log 2>&1; then
+    if run_logged_with_timeout 35 /tmp/singbox_source_probe.log "$probe_cmd"; then
         green "  [✔] 默认软件源可用，继续保留系统当前源。"
         SOURCE_UPDATED=1
         return 0
@@ -272,7 +286,7 @@ auto_source_guard() {
     yellow "  默认软件源检测失败或超时，已触发自动换源兜底。"
     switch_system_source_auto
 
-    if run_with_timeout 45 "$probe_cmd" >/tmp/singbox_source_probe.log 2>&1; then
+    if run_logged_with_timeout 45 /tmp/singbox_source_probe.log "$probe_cmd"; then
         green "  [✔] 镜像源刷新成功。"
         SOURCE_UPDATED=1
         return 0
@@ -329,7 +343,7 @@ check_env() {
     yellow "  正在校准系统时钟 (防御 TLS 时钟偏移瘫痪)..."
     local date_str=$(curl -sI -m 3 https://google.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
     [[ -z "$date_str" ]] && date_str=$(curl -sI -m 3 https://cloudflare.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
-    [[ -n "$date_str" ]] && date -s "${date_str}Z" >/dev/null 2>&1 || true
+    [[ -n "$date_str" ]] && date -s "${date_str}Z" || true
     green "  [✔] 时间校准步骤完成。"
     
     local cmds=("curl" "wget" "sudo" "ss" "iptables" "python3" "openssl" "socat" "qrencode" "jq" "tar" "nginx")
@@ -347,7 +361,7 @@ check_env() {
 
     if [[ $missing -eq 1 ]]; then
         echo ""
-        yellow "  发现缺失组件，正在自动补全。安装过程启用限时保护，失败将提示日志。"
+        yellow "  发现缺失组件，正在自动补全。安装日志将实时显示，不再静默隐藏。"
         if [[ "${SOURCE_UPDATED:-0}" -ne 1 ]]; then
             auto_source_guard || { red " [错误] 软件源刷新失败！"; exit 1; }
         fi
@@ -543,7 +557,7 @@ migrate_legacy_dns_config() {
 
     if jq -e '.dns.servers[]? | select((has("address")) and ((has("type") | not) or (.type == null)))' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  检测到旧版 DNS 配置，正在自动迁移为 sing-box 1.12+ 新格式..."
-        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns.$(date +%F-%H%M%S)" 2>/dev/null || true
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns.$(date +%F-%H%M%S)" || true
 
         jq '
           .dns.servers |= map(
@@ -572,7 +586,7 @@ fix_dns_detour_direct_config() {
 
     if jq -e '.dns.servers[]? | select((.detour // "") == "direct")' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  检测到 DNS 残留 detour=direct，正在移除以兼容新版 sing-box..."
-        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns-detour.$(date +%F-%H%M%S)" 2>/dev/null || true
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns-detour.$(date +%F-%H%M%S)" || true
         jq '(.dns.servers[]? | select((.detour // "") == "direct")) |= del(.detour)'           /etc/sing-box/config.json > /tmp/sb_dns_detour.json && mv /tmp/sb_dns_detour.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] DNS detour 兼容修复完成。"
@@ -586,7 +600,7 @@ migrate_legacy_route_config() {
 
     if jq -e '.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null)))' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  检测到旧版路由规则，正在补充 action=route..."
-        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.route.$(date +%F-%H%M%S)" 2>/dev/null || true
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.route.$(date +%F-%H%M%S)" || true
         jq '(.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null))) | .action) = "route"'           /etc/sing-box/config.json > /tmp/sb_route.json && mv /tmp/sb_route.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] 路由规则兼容修复完成。"
@@ -601,7 +615,7 @@ fix_listen_for_no_ipv6() {
 
     if jq -e '.inbounds[]? | select(.listen == "::")' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  当前系统未启用 IPv6，正在把监听地址从 :: 改为 0.0.0.0..."
-        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.listen.$(date +%F-%H%M%S)" 2>/dev/null || true
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.listen.$(date +%F-%H%M%S)" || true
         jq '(.inbounds[]? | select(.listen == "::") | .listen) = "0.0.0.0"'           /etc/sing-box/config.json > /tmp/sb_listen.json && mv /tmp/sb_listen.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] 监听地址兼容修复完成。"
@@ -663,13 +677,14 @@ check_singbox_config() {
     ensure_singbox_core || return 1
     normalize_singbox_config
     if [[ -x /usr/local/bin/sing-box && -f /etc/sing-box/config.json ]]; then
-        /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/tmp/sing-box-check.log 2>&1
-        local rc=$?
+        yellow "  正在执行 sing-box 配置校验，完整输出如下："
+        /usr/local/bin/sing-box check -c /etc/sing-box/config.json 2>&1 | tee /tmp/sing-box-check.log
+        local rc=${PIPESTATUS[0]}
         if [[ $rc -ne 0 ]]; then
-            red "  [致命错误] Sing-box 配置校验失败，服务未重启。详细错误如下："
-            cat /tmp/sing-box-check.log
+            red "  [致命错误] Sing-box 配置校验失败，服务未重启。"
             return $rc
         fi
+        green "  [✔] Sing-box 配置校验通过。"
     else
         red "  [致命错误] 未找到 /usr/local/bin/sing-box 或 /etc/sing-box/config.json。"
         return 1
@@ -1025,8 +1040,8 @@ generate_client_configs() {
     local sub_url="http://${PUBLIC_IP}:${sub_port}/${sub_uuid}"
     [[ "$PUBLIC_IP" == *":"* ]] && sub_url="http://[${PUBLIC_IP}]:${sub_port}/${sub_uuid}"
     if command -v qrencode >/dev/null 2>&1; then
-        qrencode -o "$web_dir/$sub_uuid/sub_qr.png" -s 8 -m 2 "$sub_url" 2>/dev/null || true
-        qrencode -t ANSIUTF8 "$sub_url" > "$web_dir/$sub_uuid/sub_qr.txt" 2>/dev/null || true
+        qrencode -o "$web_dir/$sub_uuid/sub_qr.png" -s 8 -m 2 "$sub_url" || true
+        qrencode -t ANSIUTF8 "$sub_url" > "$web_dir/$sub_uuid/sub_qr.txt" || true
     fi
     
     cat << EOF > "$web_dir/$sub_uuid/clash-meta-sub.yaml"
@@ -1113,7 +1128,8 @@ EOF
         rm -f /etc/nginx/sites-enabled/default
     fi
 
-    if nginx -t >/dev/null 2>&1; then
+    yellow "  正在执行 Nginx 配置校验，完整输出如下："
+    if nginx -t; then
         svc_enable nginx
         if is_svc_active nginx; then
             if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
@@ -1396,7 +1412,7 @@ config_outbound() {
 
 ensure_subscription_ready() {
     # 进入“查看订阅”前强制重建一次，防止 sub_path.txt 或 url.txt 丢失导致链接变成 http://IP:端口/
-    normalize_singbox_config >/dev/null 2>&1 || true
+    normalize_singbox_config || true
     generate_client_configs
 
     local sub_path=$(cat /etc/sing-box/sub_path.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
@@ -1454,7 +1470,7 @@ showconf() {
     echo ""
     yellow "  ▶ [订阅二维码]"
     if command -v qrencode >/dev/null 2>&1; then
-        qrencode -t ANSIUTF8 "$sub_url" 2>/dev/null || yellow "    二维码渲染失败，请直接复制订阅地址。"
+        qrencode -t ANSIUTF8 "$sub_url" || yellow "    二维码渲染失败，请直接复制订阅地址。"
     elif [[ -f "/var/www/sing-box/$sub_path/sub_qr.txt" ]]; then
         cat "/var/www/sing-box/$sub_path/sub_qr.txt"
     else
