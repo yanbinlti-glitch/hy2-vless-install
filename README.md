@@ -23,5 +23,4 @@
 以 `root` 用户登录您的 VPS，执行以下命令进行一键部署：
 
 ```bash
-# 下载并执行安装脚本 (请替换为您的真实 raw 链接)
 wget -O install.sh https://raw.githubusercontent.com/yanbinlti-glitch/hy2-vless-install/main/install.sh && chmod +x install.sh && bash install.sh
