@@ -88,7 +88,7 @@ gen_random_str() {
 }
 
 # =================================================================
-#  3. 服务管理与标签化防火墙管控 (精准卸载支持)
+#  3. 服务管理与标签化防火墙管控 (开放运行日志)
 # =================================================================
 svc_start()   { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" start; else systemctl start "$1"; fi; }
 svc_stop()    { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" stop; else systemctl stop "$1"; fi; }
@@ -105,14 +105,14 @@ is_svc_active() {
 
 save_iptables() {
     if [[ $SYSTEM == "Alpine" ]]; then
-        rc-service iptables save >/dev/null 2>&1
-        rc-service ip6tables save >/dev/null 2>&1
+        rc-service iptables save
+        rc-service ip6tables save
     elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" || $SYSTEM == "Alma" || $SYSTEM == "Rocky" ]]; then
-        service iptables save >/dev/null 2>&1
-        service ip6tables save >/dev/null 2>&1
+        service iptables save
+        service ip6tables save
     else
         if command -v netfilter-persistent >/dev/null; then
-            netfilter-persistent save >/dev/null 2>&1
+            netfilter-persistent save
         fi
     fi
 }
@@ -124,14 +124,15 @@ open_port() {
     mkdir -p /etc/sing-box
     echo "$tag:$proto:$port" >> /etc/sing-box/.firewall_state
     
+    yellow " [防火墙] 正在放行 $proto 端口 $port..."
     if command -v firewall-cmd >/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
-        firewall-cmd --zone=public --add-port=$port/$proto --permanent >/dev/null 2>&1
-        firewall-cmd --reload >/dev/null 2>&1
+        firewall-cmd --zone=public --add-port=$port/$proto --permanent
+        firewall-cmd --reload
     elif command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
-        ufw allow $port/$proto >/dev/null 2>&1
+        ufw allow $port/$proto
     else
-        iptables -I INPUT -p $proto --dport $port -j ACCEPT >/dev/null 2>&1
-        ip6tables -I INPUT -p $proto --dport $port -j ACCEPT >/dev/null 2>&1
+        iptables -I INPUT -p $proto --dport $port -j ACCEPT
+        ip6tables -I INPUT -p $proto --dport $port -j ACCEPT
         save_iptables
     fi
 }
@@ -142,14 +143,15 @@ close_port_by_tag() {
         local tmp_state=$(mktemp)
         while IFS=: read -r tag proto port; do
             if [[ "$tag" == "$target_tag" ]]; then
-                iptables-save | grep -v -- "-p $proto -m $proto --dport $port -j ACCEPT" | iptables-restore 2>/dev/null
-                ip6tables-save | grep -v -- "-p $proto -m $proto --dport $port -j ACCEPT" | ip6tables-restore 2>/dev/null
+                yellow " [防火墙] 正在移除 $proto 端口 $port 的放行规则..."
+                iptables-save | grep -v -- "-p $proto -m $proto --dport $port -j ACCEPT" | iptables-restore
+                ip6tables-save | grep -v -- "-p $proto -m $proto --dport $port -j ACCEPT" | ip6tables-restore
                 if command -v firewall-cmd >/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
-                    firewall-cmd --zone=public --remove-port=$port/$proto --permanent >/dev/null 2>&1
-                    firewall-cmd --reload >/dev/null 2>&1
+                    firewall-cmd --zone=public --remove-port=$port/$proto --permanent
+                    firewall-cmd --reload
                 fi
                 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
-                    ufw delete allow $port/$proto >/dev/null 2>&1
+                    ufw delete allow $port/$proto
                 fi
             else
                 echo "$tag:$proto:$port" >> "$tmp_state"
@@ -161,13 +163,13 @@ close_port_by_tag() {
 }
 
 # =================================================================
-#  4. 依赖环境检查与节点探测
+#  4. 依赖环境检查、核心拉取与节点探测
 # =================================================================
 check_env() {
     clear
     echo ""
     print_line
-    green "                    系统依赖与环境检查                      "
+    green "             系统依赖检查与 Sing-box 核心前置拉取            "
     print_line
     echo ""
     green "  当前操作系统: $SYSTEM"
@@ -175,7 +177,7 @@ check_env() {
     yellow "  正在校准系统时钟 (防御 TLS 时钟偏移瘫痪)..."
     local date_str=$(curl -sI -m 3 https://google.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
     [[ -z "$date_str" ]] && date_str=$(curl -sI -m 3 https://cloudflare.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
-    [[ -n "$date_str" ]] && date -s "${date_str}Z" 2>/dev/null || true
+    [[ -n "$date_str" ]] && date -s "${date_str}Z" || true
     
     local cmds=("curl" "wget" "sudo" "ss" "iptables" "python3" "openssl" "socat" "qrencode" "jq" "tar" "nginx")
     local missing=0
@@ -185,21 +187,60 @@ check_env() {
     done
 
     if [[ $missing -eq 1 ]]; then
-        yellow "  发现缺失前置组件，正在为您自动拉取安装，请稍候..."
-        [[ ! $SYSTEM == "CentOS" ]] && { $PKG_UPDATE >/dev/null 2>&1 || true; }
+        yellow "  发现缺失前置组件，正在为您拉取安装 (日志全开)..."
+        [[ ! $SYSTEM == "CentOS" ]] && { $PKG_UPDATE || true; }
         
         if [[ $SYSTEM == "Alpine" ]]; then
-            $PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat libqrencode-tools jq coreutils nginx tar >/dev/null 2>&1 || { red " [错误] 依赖安装失败！"; exit 1; }
+            $PKG_INSTALL curl wget sudo procps iptables ip6tables iproute2 python3 openssl socat libqrencode-tools jq coreutils nginx tar || { red " [错误] 依赖安装失败！"; exit 1; }
         elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Fedora" || $SYSTEM == "Alma" || $SYSTEM == "Rocky" ]]; then
-            $PKG_INSTALL epel-release >/dev/null 2>&1 || true
-            $PKG_INSTALL curl wget sudo procps iptables iptables-services iproute python3 openssl socat qrencode jq coreutils nginx tar >/dev/null 2>&1 || { red " [错误] 依赖安装失败！"; exit 1; }
+            $PKG_INSTALL epel-release || true
+            $PKG_INSTALL curl wget sudo procps iptables iptables-services iproute python3 openssl socat qrencode jq coreutils nginx tar || { red " [错误] 依赖安装失败！"; exit 1; }
         else
             export DEBIAN_FRONTEND=noninteractive
-            apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y install curl wget sudo procps iptables-persistent netfilter-persistent iproute2 python3 openssl socat qrencode jq coreutils nginx tar >/dev/null 2>&1 || { red " [错误] 依赖安装失败！"; exit 1; }
+            apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y install curl wget sudo procps iptables-persistent netfilter-persistent iproute2 python3 openssl socat qrencode jq coreutils nginx tar || { red " [错误] 依赖安装失败！"; exit 1; }
         fi
         green "  所有前置依赖补全完成！"
     else
         green "  所有前置依赖检查通过，环境完美！"
+    fi
+
+    # --- 物理前置的 Sing-box 核心拉取逻辑 ---
+    if [[ ! -f "/usr/local/bin/sing-box" ]]; then
+        echo ""
+        yellow "  正在拉取 Sing-box 最新版二进制核心 (全量输出下载日志)..."
+        local arch=$(uname -m)
+        local sb_arch="amd64"
+        [[ "$arch" == "aarch64" ]] && sb_arch="arm64"
+        [[ "$arch" == "s390x" ]] && sb_arch="s390x"
+
+        local tag_json=$(curl -s -m 10 "https://api.github.com/repos/SagerNet/sing-box/releases/latest")
+        local sb_version=$(echo "$tag_json" | jq -r '.tag_name' 2>/dev/null)
+        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.9.3"
+        
+        local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
+        
+        rm -rf /tmp/sing-box*
+        wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
+        
+        if [[ ! -s /tmp/sing-box.tar.gz ]]; then
+            red " [致命错误] Sing-box 核心下载失败！"
+            exit 1
+        fi
+        
+        tar -xzf /tmp/sing-box.tar.gz -C /tmp/
+        local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}")
+        
+        if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
+            mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
+            chmod +x /usr/local/bin/sing-box
+            green "  [✔] Sing-box ($sb_version) 核心拉取并部署成功！"
+        else
+            red " [致命错误] Sing-box 核心解压或定位失败！"; exit 1
+        fi
+        rm -rf /tmp/sing-box*
+    else
+        echo ""
+        green "  [✔] 探测到本地已存在 Sing-box 核心，跳过重复下载。"
     fi
     sleep 1
 }
@@ -219,23 +260,57 @@ check_installed_nodes() {
 #  5. 安装交互核心流程 (双协议无缝共存与底层隔离)
 # =================================================================
 inst_cert() {
-    yellow "  系统已统一采用安全自签模式，开始静默生成伪装 ECC 密钥对..."
+    yellow "  系统已统一采用安全自签模式，开始生成伪装 ECC 密钥对..."
     mkdir -p /etc/sing-box
     cert_path="/etc/sing-box/cert.crt"
     key_path="/etc/sing-box/private.key"
-    local cert_sni="www.bing.com"
     
-    openssl ecparam -genkey -name prime256v1 -out "$key_path" >/dev/null 2>&1
-    openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$cert_sni" >/dev/null 2>&1
+    echo ""
+    yellow "  请选择您的安全伪装域名 (SNI):"
+    echo -e "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com (推荐, 默认)"
+    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
+    echo -e "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
+    echo -e "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [1-4] (默认1): ${PLAIN}"
+    read sni_choice || sni_choice=1
+    [[ -z "$sni_choice" ]] && sni_choice=1
+    
+    local cert_sni="www.bing.com"
+    case $sni_choice in
+        2) cert_sni="www.apple.com" ;;
+        3) cert_sni="www.microsoft.com" ;;
+        4)
+            echo -en " ${LIGHT_YELLOW} ▶ 请输入自定义伪装域名 (如 github.com): ${PLAIN}"
+            read cert_sni || cert_sni="www.bing.com"
+            [[ -z "$cert_sni" ]] && cert_sni="www.bing.com"
+            ;;
+    esac
+    
+    openssl ecparam -genkey -name prime256v1 -out "$key_path"
+    openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$cert_sni"
     
     chmod 644 "$cert_path"
     chmod 644 "$key_path"
     echo "$cert_sni" > /etc/sing-box/cert_sni.txt
-    green "  自签证书生成并降权授权成功！"
+    green "  自签证书 ($cert_sni) 生成并降权授权成功！"
 }
 
 inst_sub_port(){
     echo ""
+    local history_port=""
+    [[ -f /etc/sing-box/sub_port.txt ]] && history_port=$(cat /etc/sing-box/sub_port.txt)
+    
+    if [[ -n "$history_port" ]]; then
+        echo -en " ${LIGHT_YELLOW} ▶ 检测到历史订阅端口 [${history_port}]，是否沿用以保持订阅链接不变？(y/n) [默认: y]: ${PLAIN}"
+        read use_hist || use_hist="y"
+        [[ -z "$use_hist" ]] && use_hist="y"
+        if [[ "$use_hist" == "y" || "$use_hist" == "Y" ]]; then
+            sub_port_input=$history_port
+            green " 沿用历史订阅 HTTPS 端口: $sub_port_input"
+            return
+        fi
+    fi
+
     echo -en " ${LIGHT_YELLOW} ▶ 设置 Nginx 聚合订阅服务端口 [1024-65535] (回车随机): ${PLAIN}"
     read sub_port_input || exit 1
     [[ -z $sub_port_input ]] && sub_port_input=$(shuf -i 10000-30000 -n 1)
@@ -256,39 +331,8 @@ inst_sub_port(){
     echo "$sub_port_input" > /etc/sing-box/sub_port.txt
 }
 
-inst_singbox_core() {
-    yellow "  正在拉取 Sing-box 最新版二进制核心..."
-    local arch=$(uname -m)
-    local sb_arch="amd64"
-    [[ "$arch" == "aarch64" ]] && sb_arch="arm64"
-    [[ "$arch" == "s390x" ]] && sb_arch="s390x"
-
-    local tag_json=$(curl -s -m 10 "https://api.github.com/repos/SagerNet/sing-box/releases/latest")
-    local sb_version=$(echo "$tag_json" | jq -r '.tag_name' 2>/dev/null)
-    [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.9.3"
-    
-    local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
-    
-    rm -rf /tmp/sing-box*
-    wget --timeout=15 --tries=3 -qO /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -qO /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
-    
-    if [[ ! -s /tmp/sing-box.tar.gz ]]; then
-        red " [致命错误] Sing-box 核心下载失败！"
-        exit 1
-    fi
-    
-    tar -xzf /tmp/sing-box.tar.gz -C /tmp/
-    local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}")
-    
-    if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
-        mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
-        chmod +x /usr/local/bin/sing-box
-        green "  [✔] Sing-box ($sb_version) 核心就绪！"
-    else
-        red " [致命错误] Sing-box 核心解压或定位失败！"; exit 1
-    fi
-    rm -rf /tmp/sing-box*
-
+setup_singbox_service() {
+    yellow "  正在装配 Sing-box 系统级守护进程 (挂载高强度沙盒防御)..."
     if [[ $SYSTEM == "Alpine" ]]; then
         cat << 'EOF' > /etc/init.d/sing-box
 #!/sbin/openrc-run
@@ -358,9 +402,9 @@ inst_hysteria2() {
     [[ -f /etc/sing-box/config.json ]] && is_first=0
 
     if [[ $is_first -eq 1 ]]; then
-        inst_singbox_core
         inst_cert
         inst_sub_port
+        setup_singbox_service
         build_base_json
     fi
     
@@ -430,9 +474,9 @@ inst_vless_reality() {
     [[ -f /etc/sing-box/config.json ]] && is_first=0
 
     if [[ $is_first -eq 1 ]]; then
-        inst_singbox_core
         inst_cert
         inst_sub_port
+        setup_singbox_service
         build_base_json
     fi
     
@@ -451,6 +495,9 @@ inst_vless_reality() {
     open_port $port "tcp" "vless-in"
     
     echo ""
+    local v_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
+    yellow "  VLESS Reality 伪装域名已自动继承基础设定: $v_sni"
+    
     yellow "  正在通过 Sing-box 核心生成原生 x25519 密钥对与 Short ID..."
     local keypair_json=$(/usr/local/bin/sing-box generate reality-keypair)
     local v_private_key=$(echo "$keypair_json" | awk '/PrivateKey/ {print $2}' | tr -d '"')
@@ -467,7 +514,7 @@ inst_vless_reality() {
     echo "$custom_node_name" > /etc/sing-box/vless_name.txt
     
     # 结构化 Append JSON 防御
-    jq --arg p "$port" --arg uuid "$v_uuid" --arg priv "$v_private_key" --arg sid "$v_short_id" '
+    jq --arg p "$port" --arg uuid "$v_uuid" --arg priv "$v_private_key" --arg sid "$v_short_id" --arg sni "$v_sni" '
     .inbounds += [{
       "type": "vless",
       "tag": "vless-in",
@@ -476,10 +523,10 @@ inst_vless_reality() {
       "users": [{"uuid": $uuid, "flow": "xtls-rprx-vision"}],
       "tls": {
         "enabled": true,
-        "server_name": "www.microsoft.com",
+        "server_name": $sni,
         "reality": {
           "enabled": true,
-          "handshake": { "server": "www.microsoft.com", "server_port": 443 },
+          "handshake": { "server": $sni, "server_port": 443 },
           "private_key": $priv,
           "short_id": [$sid]
         }
@@ -544,8 +591,6 @@ generate_client_configs() {
     check_installed_nodes
     
     if [[ $has_hy2 -eq 0 && $has_vless -eq 0 ]]; then
-        rm -f /etc/nginx/conf.d/sing-box-sub.conf /etc/nginx/sites-enabled/sing-box-sub.conf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/http.d/sing-box-sub.conf
-        if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload >/dev/null 2>&1; else systemctl reload nginx >/dev/null 2>&1; fi
         return
     fi
 
@@ -602,7 +647,7 @@ generate_client_configs() {
         local safe_node_name=$(NAME="$node_name" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('NAME', '')))")
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .listen_port' /etc/sing-box/config.json)
         local uuid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .users[0].uuid' /etc/sing-box/config.json)
-        local sni="www.microsoft.com"
+        local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
 
@@ -705,9 +750,12 @@ EOF
         rm -f /etc/nginx/sites-enabled/default
     fi
 
-    if nginx -t >/dev/null 2>&1; then
+    nginx -t
+    if [[ $? -eq 0 ]]; then
         svc_enable nginx
-        if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart >/dev/null 2>&1; else systemctl restart nginx >/dev/null 2>&1; fi
+        if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi
+    else
+        red "  [警告] Nginx 语法测试失败，请查阅上方日志排错！"
     fi
 }
 
@@ -717,11 +765,11 @@ clean_env() {
     close_port_by_tag "vless-in"
     close_port_by_tag "sub"
 
-    svc_stop sing-box >/dev/null 2>&1
-    svc_disable sing-box >/dev/null 2>&1
+    svc_stop sing-box
+    svc_disable sing-box
     
     rm -f /etc/nginx/conf.d/sing-box-sub.conf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/sites-enabled/sing-box-sub.conf /etc/nginx/http.d/sing-box-sub.conf
-    if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload >/dev/null 2>&1; else systemctl reload nginx >/dev/null 2>&1; fi
+    if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
 
     if [[ $SYSTEM == "Alpine" ]]; then
         rm -f /etc/init.d/sing-box
@@ -771,27 +819,39 @@ remove_node() {
     case $rm_choice in
         1)
             [[ $has_hy2 -eq 0 ]] && return
-            close_port_by_tag "hy2-in"
-            jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
-            generate_client_configs
-            svc_stop sing-box >/dev/null 2>&1
-            svc_start sing-box >/dev/null 2>&1
-            green "  [✔] Hysteria 2 节点已成功卸载！"
+            if [[ $has_vless -eq 0 ]]; then
+                yellow "  [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
+                clean_env "keep_core"
+                green "  [✔] Hysteria 2 节点及关联服务已成功卸载！(核心已保留)"
+            else
+                close_port_by_tag "hy2-in"
+                jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
+                generate_client_configs
+                svc_stop sing-box
+                svc_start sing-box
+                green "  [✔] Hysteria 2 节点已成功卸载！"
+            fi
             sleep 2
             ;;
         2)
             [[ $has_vless -eq 0 ]] && return
-            close_port_by_tag "vless-in"
-            jq 'del(.inbounds[] | select(.tag=="vless-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
-            generate_client_configs
-            svc_stop sing-box >/dev/null 2>&1
-            svc_start sing-box >/dev/null 2>&1
-            green "  [✔] VLESS 节点已成功卸载！"
+            if [[ $has_hy2 -eq 0 ]]; then
+                yellow "  [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
+                clean_env "keep_core"
+                green "  [✔] VLESS 节点及关联服务已成功卸载！(核心已保留)"
+            else
+                close_port_by_tag "vless-in"
+                jq 'del(.inbounds[] | select(.tag=="vless-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
+                generate_client_configs
+                svc_stop sing-box
+                svc_start sing-box
+                green "  [✔] VLESS 节点已成功卸载！"
+            fi
             sleep 2
             ;;
         3)
             clean_env "keep_core"
-            green "  [✔] 所有节点配置及防火墙规则已被彻底清理！(核心已保留)"
+            green "  [✔] 所有节点配置、订阅及防火墙规则已被彻底清理！(核心已保留)"
             sleep 2
             ;;
         0) return ;;
@@ -857,8 +917,8 @@ edit_config() {
             mv /tmp/config.json.bak /etc/sing-box/config.json
             sleep 3
         else
-            svc_stop sing-box >/dev/null 2>&1
-            svc_start sing-box >/dev/null 2>&1
+            svc_stop sing-box
+            svc_start sing-box
             sleep 1
             if is_svc_active sing-box; then
                 green "  [✔] 重启成功！新配置已生效。"
@@ -866,8 +926,8 @@ edit_config() {
             else
                 red "  [✘] 核心拒绝启动！已恢复修改前的配置。"
                 mv /tmp/config.json.bak /etc/sing-box/config.json
-                svc_stop sing-box >/dev/null 2>&1
-                svc_start sing-box >/dev/null 2>&1
+                svc_stop sing-box
+                svc_start sing-box
             fi
         fi
     fi
@@ -926,7 +986,6 @@ config_outbound() {
             echo ""
             yellow "  正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
             
-            # 使用 jq slurpfile 防御所有包含极特殊符号的密码与用户注入崩溃
             jq --arg addr "$proxy_addr" --arg port "$proxy_port" --arg user "$proxy_user" --arg pass "$proxy_pass" '
               if $user != "" then
                 {"type":"socks","tag":"proxy","server":$addr,"server_port":($port|tonumber),"username":$user,"password":$pass}
@@ -944,8 +1003,8 @@ config_outbound() {
             mv /tmp/sb_out.json /etc/sing-box/config.json
             
             green "  新落地代理配置写入完毕！"
-            svc_stop sing-box >/dev/null 2>&1
-            svc_start sing-box >/dev/null 2>&1
+            svc_stop sing-box
+            svc_start sing-box
             sleep 1
             if is_svc_active sing-box; then
                 green "  [✔] 重启成功！静态住宅 IP 落地规则已全面生效。"
@@ -958,8 +1017,8 @@ config_outbound() {
             jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy"))' /etc/sing-box/config.json > /tmp/sb_out.json
             mv -f /tmp/sb_out.json /etc/sing-box/config.json
             
-            svc_stop sing-box >/dev/null 2>&1
-            svc_start sing-box >/dev/null 2>&1
+            svc_stop sing-box
+            svc_start sing-box
             sleep 1
             green "  [✔] 重启成功！已安全退回服务器本机 IP 直连输出模式。"
             ;;
@@ -1090,9 +1149,9 @@ singbox_switch() {
     echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
-        1 ) svc_start sing-box >/dev/null 2>&1; green "  Sing-box 核心已启动！"; sleep 2 ;;
-        2 ) svc_stop sing-box >/dev/null 2>&1; yellow "  Sing-box 核心已停止！"; sleep 2 ;;
-        3 ) svc_stop sing-box >/dev/null 2>&1; svc_start sing-box >/dev/null 2>&1; if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart >/dev/null 2>&1; else systemctl restart nginx >/dev/null 2>&1; fi; green "  核心服务已重启！"; sleep 2 ;;
+        1 ) svc_start sing-box; green "  Sing-box 核心已启动！"; sleep 2 ;;
+        2 ) svc_stop sing-box; yellow "  Sing-box 核心已停止！"; sleep 2 ;;
+        3 ) svc_stop sing-box; svc_start sing-box; if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi; green "  核心服务已重启！"; sleep 2 ;;
         0 ) return ;;
         * ) red "  输入无效"; sleep 1 ;;
     esac
