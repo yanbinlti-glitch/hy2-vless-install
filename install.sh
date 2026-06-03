@@ -299,7 +299,7 @@ check_env() {
         esac
 
         local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r')
-        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.10.1" 
+        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.12.0" 
         
         local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
         
@@ -469,8 +469,7 @@ build_base_json() {
         "type": "udp",
         "tag": "google",
         "server": "8.8.8.8",
-        "server_port": 53,
-        "detour": "direct"
+        "server_port": 53
       }
     ]
   },
@@ -495,6 +494,7 @@ EOF
 
 migrate_legacy_dns_config() {
     # 兼容 sing-box 1.12+：自动把旧版 dns.servers[].address 迁移为新版 server/type 写法
+    # 注意：DNS 服务器不要写 detour: direct。新版 sing-box 会报：detour to an empty direct outbound makes no sense。
     [[ -f /etc/sing-box/config.json ]] || return 0
     command -v jq >/dev/null 2>&1 || return 0
 
@@ -512,7 +512,6 @@ migrate_legacy_dns_config() {
                 "server": $old.address,
                 "server_port": ($old.server_port // 53)
               }
-              + (if (($old.detour // "") != "") then {"detour": $old.detour} else {} end)
             else
               .
             end
@@ -520,6 +519,20 @@ migrate_legacy_dns_config() {
         ' /etc/sing-box/config.json > /tmp/sb_dns.json && mv /tmp/sb_dns.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] DNS 配置迁移完成。"
+    fi
+}
+
+fix_dns_detour_direct_config() {
+    # 修复已经被迁移成新 DNS 但仍残留 detour: direct 的配置。
+    [[ -f /etc/sing-box/config.json ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+
+    if jq -e '.dns.servers[]? | select((.detour // "") == "direct")' /etc/sing-box/config.json >/dev/null 2>&1; then
+        yellow "  检测到 DNS 残留 detour=direct，正在移除以兼容新版 sing-box..."
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns-detour.$(date +%F-%H%M%S)" 2>/dev/null || true
+        jq '(.dns.servers[]? | select((.detour // "") == "direct")) |= del(.detour)'           /etc/sing-box/config.json > /tmp/sb_dns_detour.json && mv /tmp/sb_dns_detour.json /etc/sing-box/config.json
+        chmod 600 /etc/sing-box/config.json
+        green "  [✔] DNS detour 兼容修复完成。"
     fi
 }
 
@@ -552,13 +565,59 @@ fix_listen_for_no_ipv6() {
     fi
 }
 
+ensure_singbox_core() {
+    if [[ -x /usr/local/bin/sing-box ]]; then
+        return 0
+    fi
+
+    yellow "  未检测到 /usr/local/bin/sing-box，正在重新拉取核心..."
+    local arch=$(uname -m)
+    local sb_arch=""
+    case "$arch" in
+        x86_64 | amd64)      sb_arch="amd64" ;;
+        aarch64 | arm64)     sb_arch="arm64" ;;
+        armv7* | armv6*)     sb_arch="armv7" ;;
+        i386 | i686)         sb_arch="386" ;;
+        s390x)               sb_arch="s390x" ;;
+        *) red " [致命错误] Sing-box 暂不支持您的 CPU 架构: $arch！"; return 1 ;;
+    esac
+
+    local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '
+')
+    [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.12.0"
+    local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
+
+    rm -rf /tmp/sing-box*
+    wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
+    if [[ ! -s /tmp/sing-box.tar.gz ]]; then
+        red " [致命错误] Sing-box 核心下载失败！请检查网络。"
+        return 1
+    fi
+
+    tar -xzf /tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
+    local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}" | head -n 1)
+    if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
+        mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
+        chmod +x /usr/local/bin/sing-box
+        green "  [✔] Sing-box ($sb_version | $sb_arch) 核心已恢复。"
+        rm -rf /tmp/sing-box*
+        return 0
+    fi
+
+    red " [致命错误] Sing-box 核心解压后未找到二进制文件。"
+    rm -rf /tmp/sing-box*
+    return 1
+}
+
 normalize_singbox_config() {
     migrate_legacy_dns_config
+    fix_dns_detour_direct_config
     migrate_legacy_route_config
     fix_listen_for_no_ipv6
 }
 
 check_singbox_config() {
+    ensure_singbox_core || return 1
     normalize_singbox_config
     if [[ -x /usr/local/bin/sing-box && -f /etc/sing-box/config.json ]]; then
         /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/tmp/sing-box-check.log 2>&1
@@ -568,6 +627,9 @@ check_singbox_config() {
             cat /tmp/sing-box-check.log
             return $rc
         fi
+    else
+        red "  [致命错误] 未找到 /usr/local/bin/sing-box 或 /etc/sing-box/config.json。"
+        return 1
     fi
     return 0
 }
@@ -794,7 +856,17 @@ generate_client_configs() {
         return
     fi
 
-    local sub_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null)
+    local sub_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+    if [[ -z "$sub_port" ]]; then
+        yellow "  [订阅修复] 未检测到订阅端口，正在自动生成新的订阅端口..."
+        sub_port=$(shuf -i 10000-30000 -n 1)
+        while ss -tnl 2>/dev/null | grep -E -q "(:|^)$sub_port( |$)"; do
+            sub_port=$(shuf -i 10000-30000 -n 1)
+        done
+        echo "$sub_port" > /etc/sing-box/sub_port.txt
+        open_port "$sub_port" "tcp" "sub"
+    fi
+
     local sub_uuid=$(cat /root/.hy2_sub_uuid 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
     [[ -z "$sub_uuid" ]] && sub_uuid=$(echo "${PUBLIC_IP}-Singbox-Sub" | md5sum | head -c 16)
     echo "$sub_uuid" > /root/.hy2_sub_uuid
@@ -1268,17 +1340,53 @@ config_outbound() {
     read temp
 }
 
+ensure_subscription_ready() {
+    # 进入“查看订阅”前强制重建一次，防止 sub_path.txt 或 url.txt 丢失导致链接变成 http://IP:端口/
+    normalize_singbox_config >/dev/null 2>&1 || true
+    generate_client_configs
+
+    local sub_path=$(cat /etc/sing-box/sub_path.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
+    local sub_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+
+    if [[ -z "$sub_port" || -z "$sub_path" || ! -s "/var/www/sing-box/$sub_path/url.txt" ]]; then
+        check_installed_nodes
+        echo ""
+        red "  [错误] 订阅信息未能生成完整。"
+        yellow "  当前检测到的节点状态: Hysteria2=$has_hy2 / VLESS=$has_vless"
+        yellow "  这通常说明 /etc/sing-box/config.json 里没有 hy2-in 或 vless-in 入站，或节点配置未通过校验。"
+        echo ""
+        yellow "  请在服务器执行下面三条，把输出发给我："
+        echo -e "${LIGHT_GREEN}    /usr/local/bin/sing-box check -c /etc/sing-box/config.json${PLAIN}"
+        echo -e "${LIGHT_GREEN}    jq '.inbounds[]?.tag' /etc/sing-box/config.json${PLAIN}"
+        if [[ $SYSTEM == "Alpine" ]]; then
+            echo -e "${LIGHT_GREEN}    tail -n 80 /var/log/sing-box.log${PLAIN}"
+        else
+            echo -e "${LIGHT_GREEN}    journalctl -u sing-box -n 80 --no-pager${PLAIN}"
+        fi
+        return 1
+    fi
+    return 0
+}
+
 showconf() {
+    clear
+    echo ""
+    yellow "  正在刷新订阅与直连节点信息..."
+    if ! ensure_subscription_ready; then
+        echo ""
+        echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+        read temp
+        return
+    fi
+
     realip
-    local sub_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null)
-    local sub_path=$(cat /etc/sing-box/sub_path.txt 2>/dev/null)
-    [[ -z "$sub_port" ]] && return
-    
+    local sub_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+    local sub_path=$(cat /etc/sing-box/sub_path.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
     local sub_url="http://${PUBLIC_IP}:${sub_port}/${sub_path}"
     [[ "$PUBLIC_IP" == *":"* ]] && sub_url="http://[${PUBLIC_IP}]:${sub_port}/${sub_path}"
 
     local raw_url=$(cat "/var/www/sing-box/$sub_path/url.txt" 2>/dev/null)
-    
+
     clear
     echo ""
     print_line
@@ -1294,11 +1402,11 @@ showconf() {
     green  "    节点地址:"
     echo -e "${LIGHT_GREEN}${raw_url}${PLAIN}"
     echo ""
-    
+
     print_line
     yellow "  ▶ 自助排障与安全特性提醒 (必读)："
-    echo -e "    ${LIGHT_GREEN}脚本已通过底层提取自签证书真实指纹，完美适配未来 Xray 强鉴权特性！${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}订阅链接已降级为 HTTP 协议，彻底解决客户端导入时报 SSL 证书错误的问题。${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}如果订阅链接无法打开，请先确认 VPS 安全组已放行 TCP 订阅端口 ${sub_port}。${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}如果 Hy2 节点无法连接，请确认 VPS 安全组已放行对应 UDP 主端口。${PLAIN}"
     echo -e "    ${LIGHT_PURPLE}====================================================${PLAIN}"
     echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
@@ -1408,6 +1516,7 @@ quick_repair_and_status() {
         return
     fi
 
+    ensure_singbox_core || { echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"; read temp; return; }
     normalize_singbox_config
     echo ""
     yellow "  正在执行 sing-box 配置校验..."
@@ -1435,6 +1544,14 @@ quick_repair_and_status() {
     fi
 
     generate_client_configs
+    local diag_sub_path=$(cat /etc/sing-box/sub_path.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
+    if [[ -z "$diag_sub_path" || ! -s "/var/www/sing-box/$diag_sub_path/url.txt" ]]; then
+        red "  [✘] 节点文件仍未生成：请检查配置中是否存在 hy2-in 或 vless-in 入站。"
+        jq '.inbounds[]?.tag' /etc/sing-box/config.json 2>/dev/null || true
+    else
+        green "  [✔] 订阅路径与直连节点已生成: /$diag_sub_path"
+    fi
+
     if nginx -t; then
         svc_enable nginx
         if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi
