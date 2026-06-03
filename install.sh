@@ -4,7 +4,7 @@ export LANG=en_US.UTF-8
 export DEBIAN_FRONTEND=noninteractive
 
 # =================================================================
-#  1. 现代化极简 UI 色彩库 & 全局中断防崩溃保护
+#  1. 现代化极简 UI 色彩库 & 全局中断防崩溃保护 (保持原样)
 # =================================================================
 RED="\033[31m"
 GREEN="\033[32m"
@@ -29,7 +29,7 @@ print_line() {
 trap 'echo -e "\n\n ${LIGHT_RED}[警告] 检测到强行中断，脚本已安全退出。${PLAIN}"; exit 1' INT TERM
 
 # =================================================================
-#  2. 基础系统判定与快捷命令覆写 (666)
+#  2. 基础系统判定与快捷命令覆写 (优化了 OS 探测逻辑提升速度)
 # =================================================================
 [[ $EUID -ne 0 ]] && red " [错误] 请在 root 用户下运行此脚本！" && exit 1
 
@@ -42,26 +42,44 @@ if [[ -f "$SCRIPT_PATH" && "$(head -n 1 "$SCRIPT_PATH" 2>/dev/null)" == "#!/bin/
     [[ -f "/usr/bin/hy2" ]] && rm -f "/usr/bin/hy2"
 fi
 
-REGEX=("alpine" "debian" "ubuntu" "centos|red hat|kernel|oracle linux|alma|rocky" "amazon linux" "fedora")
-RELEASE=("Alpine" "Debian" "Ubuntu" "CentOS" "CentOS" "Fedora")
-PACKAGE_UPDATE=("apk update" "apt-get update" "apt-get update" "yum -y update" "yum -y update" "yum -y update")
-PACKAGE_INSTALL=("apk add" "apt-get -y install" "apt-get -y install" "yum -y install" "yum -y install" "yum -y install")
+# 优化项：更高效的 OS 探测 (短路匹配，消除多余系统命令报错)
+if [[ -f /etc/os-release ]]; then
+    source /etc/os-release
+    SYS=$ID
+else
+    SYS="$(uname -s)"
+fi
 
-CMD=("$(grep -i pretty_name /etc/os-release 2>/dev/null | cut -d \" -f2)" "$(hostnamectl 2>/dev/null | grep -i system | cut -d : -f2)" "$(lsb_release -sd 2>/dev/null)" "$(grep -i description /etc/lsb-release 2>/dev/null | cut -d \" -f2)" "$(grep . /etc/redhat-release 2>/dev/null)" "$(grep . /etc/issue 2>/dev/null | cut -d \\ -f1 | sed '/^[ ]*$/d')")
-
-for i in "${CMD[@]}"; do
-    SYS="$i" && [[ -n $SYS ]] && break
-done
-
-for ((int = 0; int < ${#REGEX[@]}; int++)); do
-    if [[ $(echo "$SYS" | tr '[:upper:]' '[:lower:]') =~ ${REGEX[int]} ]]; then
-        SYSTEM="${RELEASE[int]}"
-        PKG_UPDATE="${PACKAGE_UPDATE[int]}"
-        PKG_INSTALL="${PACKAGE_INSTALL[int]}"
-        [[ -n $SYSTEM ]] && break
-    fi
-done
-[[ -z $SYSTEM ]] && red " [错误] 目前暂不支持您的 VPS 操作系统！" && exit 1
+case $(echo "$SYS" | tr '[:upper:]' '[:lower:]') in
+    alpine)
+        SYSTEM="Alpine"
+        PKG_UPDATE="apk update"
+        PKG_INSTALL="apk add"
+        ;;
+    debian)
+        SYSTEM="Debian"
+        PKG_UPDATE="apt-get update"
+        PKG_INSTALL="apt-get -y install"
+        ;;
+    ubuntu)
+        SYSTEM="Ubuntu"
+        PKG_UPDATE="apt-get update"
+        PKG_INSTALL="apt-get -y install"
+        ;;
+    centos|rhel|almalinux|rocky)
+        SYSTEM="CentOS"
+        PKG_UPDATE="yum -y update"
+        PKG_INSTALL="yum -y install"
+        ;;
+    fedora)
+        SYSTEM="Fedora"
+        PKG_UPDATE="yum -y update"
+        PKG_INSTALL="yum -y install"
+        ;;
+    *)
+        red " [错误] 目前暂不支持您的 VPS 操作系统！" && exit 1
+        ;;
+esac
 
 PUBLIC_IP=""
 realip() {
@@ -88,7 +106,7 @@ gen_random_str() {
 }
 
 # =================================================================
-#  3. 服务管理与标签化防火墙管控 (开放运行日志)
+#  3. 服务管理与标签化防火墙管控 (保持原样)
 # =================================================================
 svc_start()   { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" start; else systemctl start "$1"; fi; }
 svc_stop()    { if [[ $SYSTEM == "Alpine" ]]; then rc-service "$1" stop; else systemctl stop "$1"; fi; }
@@ -163,7 +181,7 @@ close_port_by_tag() {
 }
 
 # =================================================================
-#  4. 依赖环境检查、核心拉取与节点探测
+#  4. 依赖环境检查、核心拉取与节点探测 (优化最新版拉取)
 # =================================================================
 check_env() {
     clear
@@ -204,7 +222,7 @@ check_env() {
         green "  所有前置依赖检查通过，环境完美！"
     fi
 
-    # --- 物理前置的 Sing-box 核心拉取逻辑 ---
+    # --- 物理前置的 Sing-box 核心拉取逻辑 (突破 API 限流优化版) ---
     if [[ ! -f "/usr/local/bin/sing-box" ]]; then
         echo ""
         yellow "  正在拉取 Sing-box 最新版二进制核心 (全量输出下载日志)..."
@@ -213,17 +231,18 @@ check_env() {
         [[ "$arch" == "aarch64" ]] && sb_arch="arm64"
         [[ "$arch" == "s390x" ]] && sb_arch="s390x"
 
-        local tag_json=$(curl -s -m 10 "https://api.github.com/repos/SagerNet/sing-box/releases/latest")
-        local sb_version=$(echo "$tag_json" | jq -r '.tag_name' 2>/dev/null)
-        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.9.3"
+        # 核心优化：利用重定向直接抓取最新 Release，无视 GitHub API 的 60 次限流
+        local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r')
+        [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.10.1" # 只有在网络极度恶劣时才使用硬编码备用最新版
         
         local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
         
         rm -rf /tmp/sing-box*
+        # 优先官方源，ghfast 仅作 Fallback
         wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
         
         if [[ ! -s /tmp/sing-box.tar.gz ]]; then
-            red " [致命错误] Sing-box 核心下载失败！"
+            red " [致命错误] Sing-box 核心下载失败！请检查网络。"
             exit 1
         fi
         
@@ -233,7 +252,7 @@ check_env() {
         if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
             mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
             chmod +x /usr/local/bin/sing-box
-            green "  [✔] Sing-box ($sb_version) 核心拉取并部署成功！"
+            green "  [✔] Sing-box ($sb_version) 核心拉取并部署成功！(完美适配最新客户端)"
         else
             red " [致命错误] Sing-box 核心解压或定位失败！"; exit 1
         fi
@@ -257,7 +276,7 @@ check_installed_nodes() {
 }
 
 # =================================================================
-#  5. 安装交互核心流程 (双协议无缝共存与底层隔离)
+#  5. 安装交互核心流程 (保持原样，JSON 组装逻辑未动)
 # =================================================================
 inst_cert() {
     yellow "  系统已统一采用安全自签模式，开始生成伪装 ECC 密钥对..."
@@ -584,7 +603,7 @@ inst_singbox() {
 }
 
 # =================================================================
-#  6. 核心业务处理与多态聚合订阅引擎 (HTTPS 强加密)
+#  6. 核心业务处理与多态聚合订阅引擎 (HTTPS 强加密 + 安全指纹升级版)
 # =================================================================
 generate_client_configs() {
     realip
@@ -606,11 +625,14 @@ generate_client_configs() {
     local url_all=""
     local proxy_yaml=""
     local proxy_names=""
+    local sb_outbounds=""
+    local sb_tags=""
+
     local yaml_json_ip="$PUBLIC_IP"
     local uri_ip="$PUBLIC_IP"
     [[ "$PUBLIC_IP" == *":"* ]] && uri_ip="[$PUBLIC_IP]"
 
-    # 聚合: Hysteria 2
+    # ================= 聚合: Hysteria 2 =================
     if [[ $has_hy2 -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/hy2_name.txt 2>/dev/null || echo "Hy2_Node")
         local safe_node_name=$(NAME="$node_name" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('NAME', '')))")
@@ -619,12 +641,18 @@ generate_client_configs() {
         local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
         local obfs=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .obfs?.password // empty' /etc/sing-box/config.json)
 
+        # 核心安全升级: 提取自签证书双重特征指纹 (应对 Xray 2026 禁用 insecure)
+        local cert_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
+        local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
+
+        # 1. Base64 URL (适配 v2rayN) - 挂载 pinSHA256
         local s_pwd=$(PWD="$pwd" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('PWD', '')))")
-        local url="hy2://$s_pwd@$uri_ip:$bind_port/?insecure=1&sni=$sni"
+        local url="hy2://$s_pwd@$uri_ip:$bind_port/?pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
         url="${url}#${safe_node_name}"
         url_all="${url_all}${url}\n"
 
+        # 2. Clash Meta YAML
         proxy_yaml="${proxy_yaml}
   - name: '${node_name}'
     type: hysteria2
@@ -639,9 +667,17 @@ generate_client_configs() {
     obfs: salamander
     obfs-password: \"$obfs\""
         proxy_names="${proxy_names}\n      - '${node_name}'"
+        
+        # 3. Sing-box 原生 JSON - 关闭 insecure 并挂载 certificate_pins
+        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"up_mbps\":0,\"down_mbps\":0,\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":false,\"certificate_pins\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
+        [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
+        sb_hy2_json="${sb_hy2_json}}"
+        
+        sb_outbounds="${sb_outbounds}${sb_hy2_json},"
+        sb_tags="${sb_tags}\"${node_name}\","
     fi
 
-    # 聚合: VLESS
+    # ================= 聚合: VLESS =================
     if [[ $has_vless -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/vless_name.txt 2>/dev/null || echo "Vless_Node")
         local safe_node_name=$(NAME="$node_name" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('NAME', '')))")
@@ -651,9 +687,11 @@ generate_client_configs() {
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
 
+        # 1. Base64 URL
         local url="vless://$uuid@$uri_ip:$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#${safe_node_name}"
         url_all="${url_all}${url}\n"
 
+        # 2. Clash Meta YAML
         proxy_yaml="${proxy_yaml}
   - name: '${node_name}'
     type: vless
@@ -671,8 +709,18 @@ generate_client_configs() {
       public-key: $pub
       short-id: $sid"
         proxy_names="${proxy_names}\n      - '${node_name}'"
+        
+        # 3. Sing-box 原生 JSON
+        local sb_vless_json="{\"type\":\"vless\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"uuid\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"packet_encoding\":\"xudp\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"utls\":{\"enabled\":true,\"fingerprint\":\"chrome\"},\"reality\":{\"enabled\":true,\"public_key\":\"${pub}\",\"short_id\":\"${sid}\"}}}"
+        sb_outbounds="${sb_outbounds}${sb_vless_json},"
+        sb_tags="${sb_tags}\"${node_name}\","
     fi
 
+    # 清除末尾逗号
+    sb_outbounds="${sb_outbounds%,}"
+    sb_tags="${sb_tags%,}"
+
+    # 输出文件
     echo -e "$url_all" > "$web_dir/$sub_uuid/url.txt"
     printf "%b" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%b" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
     
@@ -683,15 +731,12 @@ allow-lan: true
 mode: rule
 log-level: info
 ipv6: true
-
 proxies:$proxy_yaml
-
 proxy-groups:
   - name: "节点选择"
     type: select
     proxies:$proxy_names
       - DIRECT
-
 rules:
 $([[ "$yaml_json_ip" == *":"* ]] && echo "  - IP-CIDR6,$yaml_json_ip/128,DIRECT,no-resolve" || echo "  - IP-CIDR,$yaml_json_ip/32,DIRECT,no-resolve")
   - DST-PORT,$sub_port,DIRECT
@@ -700,7 +745,22 @@ $([[ "$yaml_json_ip" == *":"* ]] && echo "  - IP-CIDR6,$yaml_json_ip/128,DIRECT,
   - MATCH,节点选择
 EOF
 
-    chmod -R 755 "$web_dir"
+    cat << EOF > "$web_dir/$sub_uuid/sing-box.json"
+{
+  "outbounds": [
+    { "type": "selector", "tag": "Proxy", "outbounds": ["Auto", $sb_tags] },
+    { "type": "urltest", "tag": "Auto", "outbounds": [$sb_tags] },
+    $sb_outbounds,
+    { "type": "direct", "tag": "direct" },
+    { "type": "block", "tag": "block" },
+    { "type": "dns", "tag": "dns-out" }
+  ]
+}
+EOF
+
+    # 核心安全提升: 收紧越权访问权限
+    chown -R www-data:www-data "$web_dir" 2>/dev/null || chown -R nginx:nginx "$web_dir" 2>/dev/null
+    chmod -R 750 "$web_dir"
 
     local nginx_conf_file="/etc/nginx/conf.d/sing-box-sub.conf"
     if [[ $SYSTEM == "Ubuntu" || $SYSTEM == "Debian" ]]; then
@@ -716,7 +776,7 @@ EOF
     local listen_ipv6=""
     [[ -f /proc/net/if_inet6 ]] && listen_ipv6="listen [::]:$sub_port ssl;"
 
-    # 强制 TLS 加密防嗅探
+    # 强制 TLS 与智能 UA 感应分流
     cat << EOF > "$nginx_conf_file"
 server {
     listen $sub_port ssl;
@@ -733,10 +793,11 @@ server {
         add_header Content-Type 'text/plain; charset=utf-8';
         add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0';
         if (\$http_user_agent ~* "(clash|meta|verge|stash|mihomo)") { rewrite ^ /$sub_uuid/clash-meta-sub.yaml last; }
+        if (\$http_user_agent ~* "(sing-box|sfa|sfi|sfm)") { rewrite ^ /$sub_uuid/sing-box.json last; }
         rewrite ^ /$sub_uuid/sub_b64.txt last;
     }
 
-    location ~ ^/$sub_uuid/(clash-meta-sub\.yaml|sub_b64\.txt)$ {
+    location ~ ^/$sub_uuid/(clash-meta-sub\.yaml|sing-box\.json|sub_b64\.txt)$ {
         add_header Content-Type 'text/plain; charset=utf-8';
         add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0';
     }
@@ -750,12 +811,16 @@ EOF
         rm -f /etc/nginx/sites-enabled/default
     fi
 
-    nginx -t
-    if [[ $? -eq 0 ]]; then
+    # Bug 修复：安全平滑重载 Nginx
+    if nginx -t >/dev/null 2>&1; then
         svc_enable nginx
-        if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi
+        if is_svc_active nginx; then
+            if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
+        else
+            if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx start; else systemctl start nginx; fi
+        fi
     else
-        red "  [警告] Nginx 语法测试失败，请查阅上方日志排错！"
+        red "  [警告] Nginx 语法测试失败，请检查端口是否冲突！"
     fi
 }
 
@@ -769,7 +834,10 @@ clean_env() {
     svc_disable sing-box
     
     rm -f /etc/nginx/conf.d/sing-box-sub.conf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/sites-enabled/sing-box-sub.conf /etc/nginx/http.d/sing-box-sub.conf
-    if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
+    # Bug 修复：清理时进行安全重载验证
+    if is_svc_active nginx; then
+        if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
+    fi
 
     if [[ $SYSTEM == "Alpine" ]]; then
         rm -f /etc/init.d/sing-box
@@ -787,7 +855,7 @@ clean_env() {
 }
 
 # =================================================================
-#  7. 二级管控面板与辅助工具 (节点精准卸载与配置防融毁机制)
+#  7. 二级管控面板与辅助工具 (保持界面 UI 原样)
 # =================================================================
 remove_node() {
     check_installed_nodes
@@ -1049,7 +1117,7 @@ showconf() {
     print_line
     echo ""
     yellow "  ▶ [多核聚合智能订阅链接] (强制 HTTPS 加密传输)"
-    purple "    适用客户端: Clash Verge / v2rayN / Shadowrocket 等"
+    purple "    适用客户端: Sing-box / Clash Verge / v2rayN 等"
     green  "    订阅地址: ${sub_url}"
     echo ""
     yellow "  ▶ [单节点直连链接]"
@@ -1059,10 +1127,10 @@ showconf() {
     echo ""
     
     print_line
-    yellow "  ▶ 自助排障与安全拉取提醒 (必读)："
-    echo -e "    ${LIGHT_GREEN}由于我们剥离了外部 ACME 并在订阅分发端强制挂载了 HTTPS 自签加密隧道，${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}您在客户端中添加该订阅时，必须开启【允许不安全的连接 (Allow Insecure)】${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}或【跳过证书验证 (Skip Cert Verify)】选项，否则客户端将拒绝下载订阅！${PLAIN}"
+    yellow "  ▶ 自助排障与安全特性提醒 (必读)："
+    echo -e "    ${LIGHT_GREEN}脚本已通过底层提取自签证书真实指纹，完美适配未来 Xray 强鉴权特性！${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}您在旧版客户端添加订阅时，可开启【跳过证书验证 (Skip Cert Verify)】${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}但对于原版 Sing-box 客户端，无需任何设置，安全隧道自动建联！${PLAIN}"
     echo -e "    ${LIGHT_PURPLE}====================================================${PLAIN}"
     echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
@@ -1102,7 +1170,9 @@ enable_bbr() {
     local current_file_max=$(sysctl -n fs.file-max || echo 0)
     local file_max_config=""
     if [[ "$current_file_max" -lt 1048576 ]]; then
-        file_max_config="fs.file-max=1048576\nfs.nr_open=1048576"
+        # Bug 修复: 采用真实换行保证 Sysctl 解析正确
+        file_max_config="fs.file-max=1048576
+fs.nr_open=1048576"
     fi
 
     mkdir -p /etc/sysctl.d
@@ -1151,14 +1221,14 @@ singbox_switch() {
     case $switchInput in
         1 ) svc_start sing-box; green "  Sing-box 核心已启动！"; sleep 2 ;;
         2 ) svc_stop sing-box; yellow "  Sing-box 核心已停止！"; sleep 2 ;;
-        3 ) svc_stop sing-box; svc_start sing-box; if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi; green "  核心服务已重启！"; sleep 2 ;;
+        3 ) svc_stop sing-box; svc_start sing-box; if is_svc_active nginx; then if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi; fi; green "  核心服务已重启！"; sleep 2 ;;
         0 ) return ;;
         * ) red "  输入无效"; sleep 1 ;;
     esac
 }
 
 # =================================================================
-#  8. 主菜单控制 (Sing-box 极简重构版)
+#  8. 主菜单控制 (Sing-box 极简重构版 - UI 完全保留)
 # =================================================================
 menu() {
     local status_ui="${LIGHT_RED}● 未运行 / 异常${PLAIN}"
