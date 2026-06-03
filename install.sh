@@ -81,17 +81,37 @@ case $(echo "$SYS" | tr '[:upper:]' '[:lower:]') in
 esac
 
 PUBLIC_IP=""
+valid_ip_literal() {
+    python3 - "$1" <<'PYIP' >/dev/null 2>&1
+import ipaddress, sys
+try:
+    ipaddress.ip_address(sys.argv[1].strip())
+except Exception:
+    sys.exit(1)
+PYIP
+}
+
 realip() {
-    # 已经拿到合法 IPv4/IPv6 时直接复用，避免重复请求公网 IP 服务
-    if [[ -n "$PUBLIC_IP" && ( "$PUBLIC_IP" == *.* || "$PUBLIC_IP" == *:* ) ]]; then
+    if [[ -n "$PUBLIC_IP" ]] && valid_ip_literal "$PUBLIC_IP"; then
         return
     fi
     local ip=""
+    local endpoints4=("https://api.ipify.org" "https://ifconfig.me/ip" "https://ip.sb")
+    local endpoints6=("https://api64.ipify.org" "https://ifconfig.me/ip" "https://ip.sb")
+
     if ip -4 addr show scope global 2>/dev/null | grep -q 'inet '; then
-        ip=$(curl -s4m3 api.ipify.org -k || curl -s4m3 ifconfig.me -k || curl -s4m3 ip.sb -k)
+        for ep in "${endpoints4[@]}"; do
+            ip=$(curl -fsS4m4 "$ep" -k 2>/dev/null | head -n1 | tr -d '[:space:]')
+            if valid_ip_literal "$ip"; then break; fi
+            ip=""
+        done
     fi
     if [[ -z "$ip" ]]; then
-        ip=$(curl -s6m3 api64.ipify.org -k || curl -s6m3 ifconfig.me -k || curl -s6m3 ip.sb -k)
+        for ep in "${endpoints6[@]}"; do
+            ip=$(curl -fsS6m4 "$ep" -k 2>/dev/null | head -n1 | tr -d '[:space:]')
+            if valid_ip_literal "$ip"; then break; fi
+            ip=""
+        done
     fi
     if [[ -z "$ip" ]]; then
         red " [错误] 无法获取本机的公网 IP，请检查 VPS 网络连接！"
@@ -463,6 +483,7 @@ build_base_json() {
     "rules": [
       {
         "ip_cidr": [ "169.254.0.0/16", "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7", "fe80::/10" ],
+        "action": "route",
         "outbound": "block"
       }
     ]
@@ -502,8 +523,43 @@ migrate_legacy_dns_config() {
     fi
 }
 
-check_singbox_config() {
+migrate_legacy_route_config() {
+    # sing-box 1.11+ 推荐 Route Action；旧配置只有 outbound 时补 action=route。
+    [[ -f /etc/sing-box/config.json ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+
+    if jq -e '.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null)))' /etc/sing-box/config.json >/dev/null 2>&1; then
+        yellow "  检测到旧版路由规则，正在补充 action=route..."
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.route.$(date +%F-%H%M%S)" 2>/dev/null || true
+        jq '(.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null))) | .action) = "route"'           /etc/sing-box/config.json > /tmp/sb_route.json && mv /tmp/sb_route.json /etc/sing-box/config.json
+        chmod 600 /etc/sing-box/config.json
+        green "  [✔] 路由规则兼容修复完成。"
+    fi
+}
+
+fix_listen_for_no_ipv6() {
+    # 某些精简 Alpine/LXC 没有 IPv6，listen="::" 会导致服务无法监听。
+    [[ -f /etc/sing-box/config.json ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    [[ -f /proc/net/if_inet6 ]] && return 0
+
+    if jq -e '.inbounds[]? | select(.listen == "::")' /etc/sing-box/config.json >/dev/null 2>&1; then
+        yellow "  当前系统未启用 IPv6，正在把监听地址从 :: 改为 0.0.0.0..."
+        cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.listen.$(date +%F-%H%M%S)" 2>/dev/null || true
+        jq '(.inbounds[]? | select(.listen == "::") | .listen) = "0.0.0.0"'           /etc/sing-box/config.json > /tmp/sb_listen.json && mv /tmp/sb_listen.json /etc/sing-box/config.json
+        chmod 600 /etc/sing-box/config.json
+        green "  [✔] 监听地址兼容修复完成。"
+    fi
+}
+
+normalize_singbox_config() {
     migrate_legacy_dns_config
+    migrate_legacy_route_config
+    fix_listen_for_no_ipv6
+}
+
+check_singbox_config() {
+    normalize_singbox_config
     if [[ -x /usr/local/bin/sing-box && -f /etc/sing-box/config.json ]]; then
         /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/tmp/sing-box-check.log 2>&1
         local rc=$?
@@ -523,6 +579,17 @@ restart_singbox_checked() {
     else
         svc_start sing-box
     fi
+    sleep 1
+    if ! is_svc_active sing-box; then
+        red "  [✘] Sing-box 启动失败。最近日志如下："
+        if [[ $SYSTEM == "Alpine" ]]; then
+            tail -n 80 /var/log/sing-box.log 2>/dev/null || true
+        else
+            journalctl -u sing-box -n 80 --no-pager 2>/dev/null || true
+        fi
+        return 1
+    fi
+    return 0
 }
 
 inst_hysteria2() {
@@ -572,11 +639,14 @@ inst_hysteria2() {
         green " 已开启混淆，密钥为: $obfs_pwd"
     fi
     
-    jq --arg p "$port" --arg pwd "$auth_pwd" --arg cp "/etc/sing-box/cert.crt" --arg kp "/etc/sing-box/private.key" '
+    local listen_addr="::"
+    [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
+
+    jq --arg p "$port" --arg pwd "$auth_pwd" --arg cp "/etc/sing-box/cert.crt" --arg kp "/etc/sing-box/private.key" --arg listen "$listen_addr" '
     .inbounds += [{
       "type": "hysteria2",
       "tag": "hy2-in",
-      "listen": "::",
+      "listen": $listen,
       "listen_port": ($p | tonumber),
       "users": [{"password": $pwd}],
       "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
@@ -640,11 +710,14 @@ inst_vless_reality() {
     [[ -z $custom_node_name ]] && custom_node_name="Vless_Reality_Node"
     echo "$custom_node_name" > /etc/sing-box/vless_name.txt
     
-    jq --arg p "$port" --arg uuid "$v_uuid" --arg priv "$v_private_key" --arg sid "$v_short_id" --arg sni "$v_sni" '
+    local listen_addr="::"
+    [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
+
+    jq --arg p "$port" --arg uuid "$v_uuid" --arg priv "$v_private_key" --arg sid "$v_short_id" --arg sni "$v_sni" --arg listen "$listen_addr" '
     .inbounds += [{
       "type": "vless",
       "tag": "vless-in",
-      "listen": "::",
+      "listen": $listen,
       "listen_port": ($p | tonumber),
       "users": [{"uuid": $uuid, "flow": "xtls-rprx-vision"}],
       "tls": {
@@ -671,7 +744,7 @@ inst_vless_reality() {
 
 inst_singbox() {
     check_env
-    migrate_legacy_dns_config
+    normalize_singbox_config
     check_installed_nodes
     
     if [[ $has_hy2 -eq 1 && $has_vless -eq 1 ]]; then
@@ -996,8 +1069,7 @@ remove_node() {
                 close_port_by_tag "hy2-in"
                 jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
                 generate_client_configs
-                svc_stop sing-box
-                svc_start sing-box
+                restart_singbox_checked
                 green "  [✔] Hysteria 2 节点已成功卸载！"
             fi
             sleep 2
@@ -1012,8 +1084,7 @@ remove_node() {
                 close_port_by_tag "vless-in"
                 jq 'del(.inbounds[] | select(.tag=="vless-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
                 generate_client_configs
-                svc_stop sing-box
-                svc_start sing-box
+                restart_singbox_checked
                 green "  [✔] VLESS 节点已成功卸载！"
             fi
             sleep 2
@@ -1086,8 +1157,7 @@ edit_config() {
             mv /tmp/config.json.bak /etc/sing-box/config.json
             sleep 3
         else
-            svc_stop sing-box
-            svc_start sing-box
+            restart_singbox_checked
             sleep 1
             if is_svc_active sing-box; then
                 green "  [✔] 重启成功！新配置已生效。"
@@ -1167,13 +1237,12 @@ config_outbound() {
               del(.outbounds[] | select(.tag=="proxy")) |
               del(.route.rules[] | select(.outbound=="proxy")) |
               .outbounds += $ob |
-              .route.rules = [{"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "outbound": "proxy"}] + .route.rules
+              .route.rules = [{"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
             ' /etc/sing-box/config.json > /tmp/sb_out.json
             mv /tmp/sb_out.json /etc/sing-box/config.json
             
             green "  新落地代理配置写入完毕！"
-            svc_stop sing-box
-            svc_start sing-box
+            restart_singbox_checked
             sleep 1
             if is_svc_active sing-box; then
                 green "  [✔] 重启成功！静态住宅 IP 落地规则已全面生效。"
@@ -1186,8 +1255,7 @@ config_outbound() {
             jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy"))' /etc/sing-box/config.json > /tmp/sb_out.json
             mv -f /tmp/sb_out.json /etc/sing-box/config.json
             
-            svc_stop sing-box
-            svc_start sing-box
+            restart_singbox_checked
             sleep 1
             green "  [✔] 重启成功！已安全退回服务器本机 IP 直连输出模式。"
             ;;
@@ -1318,12 +1386,71 @@ singbox_switch() {
     echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
-        1 ) restart_singbox_checked && green "  Sing-box 核心已启动！"; sleep 2 ;;
+        1 ) restart_singbox_checked && green "  Sing-box 核心已启动/重载！"; sleep 2 ;;
         2 ) svc_stop sing-box; yellow "  Sing-box 核心已停止！"; sleep 2 ;;
-        3 ) restart_singbox_checked && { if is_svc_active nginx; then if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi; fi; green "  核心服务已重启！"; }; sleep 2 ;;
+        3 ) restart_singbox_checked && { if is_svc_active nginx; then if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi; fi; green "  核心服务已校验并重启！"; }; sleep 2 ;;
         0 ) return ;;
         * ) red "  输入无效"; sleep 1 ;;
     esac
+}
+
+quick_repair_and_status() {
+    clear
+    echo ""
+    print_line
+    green "                 一键兼容修复与状态诊断                 "
+    print_line
+    echo ""
+
+    if [[ ! -f /etc/sing-box/config.json ]]; then
+        red "  未检测到 /etc/sing-box/config.json，请先安装节点。"
+        sleep 2
+        return
+    fi
+
+    normalize_singbox_config
+    echo ""
+    yellow "  正在执行 sing-box 配置校验..."
+    if ! /usr/local/bin/sing-box check -c /etc/sing-box/config.json; then
+        red "  [✘] 配置仍未通过，请复制上面的错误发给我。"
+        echo ""
+        echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"
+        read temp
+        return
+    fi
+    green "  [✔] 配置校验通过。"
+
+    svc_enable sing-box
+    restart_singbox_checked
+    sleep 1
+    if is_svc_active sing-box; then
+        green "  [✔] sing-box 当前运行中。"
+    else
+        red "  [✘] sing-box 未运行。最近日志："
+        if [[ $SYSTEM == "Alpine" ]]; then
+            tail -n 80 /var/log/sing-box.log 2>/dev/null || true
+        else
+            journalctl -u sing-box -n 80 --no-pager 2>/dev/null || true
+        fi
+    fi
+
+    generate_client_configs
+    if nginx -t; then
+        svc_enable nginx
+        if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx restart; else systemctl restart nginx; fi
+        green "  [✔] Nginx 订阅服务已重启。"
+    else
+        red "  [✘] Nginx 配置测试失败，请检查订阅端口是否被占用。"
+    fi
+
+    echo ""
+    yellow "  监听端口："
+    ss -lntup 2>/dev/null | grep -E 'sing-box|nginx' || true
+    echo ""
+    yellow "  订阅与节点信息可在主菜单 [6] 查看。"
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+    read temp
 }
 
 # =================================================================
@@ -1357,11 +1484,12 @@ menu() {
     echo -e "  ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
     echo -e "  ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_PURPLE}开启 BBR 及 UDP 极限并发加速 (强烈推荐)${PLAIN}"
     echo -e "  ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
+    echo -e "  ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
     echo "----------------------------------------------------------------------------------"
     echo -e "  ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-8]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
     read menuInput || exit 1
     
     case $menuInput in
@@ -1373,6 +1501,7 @@ menu() {
         6 ) showconf ;;
         7 ) enable_bbr ;;
         8 ) global_uninstall ;;
+        9 ) quick_repair_and_status ;;
         0 ) exit 0 ;;
         * ) red "  输入无效"; sleep 1 ;;
     esac
