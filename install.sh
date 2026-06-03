@@ -180,8 +180,38 @@ close_port_by_tag() {
 }
 
 # =================================================================
-#  4. 依赖环境检查、核心拉取与节点探测 (全平台兼容增强版)
+#  4. 自动换源、依赖环境检查、核心拉取与节点探测
 # =================================================================
+change_system_source() {
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 是否需要一键替换系统软件源 (防卡死，国内机或连接异常时推荐)？(y/n) [默认: n]: ${PLAIN}"
+    read change_src || change_src="n"
+    if [[ "$change_src" == "y" || "$change_src" == "Y" ]]; then
+        yellow "  正在为您自动备份并替换基础软件源 (Aliyun 高速镜像)..."
+        if [[ $SYSTEM == "Alpine" ]]; then
+            cp /etc/apk/repositories /etc/apk/repositories.bak 2>/dev/null
+            sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+        elif [[ $SYSTEM == "Debian" ]]; then
+            cp /etc/apt/sources.list /etc/apt/sources.list.bak 2>/dev/null
+            sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+            sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list
+        elif [[ $SYSTEM == "Ubuntu" ]]; then
+            cp /etc/apt/sources.list /etc/apt/sources.list.bak 2>/dev/null
+            sed -i 's/[a-z]*.archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
+            sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
+        elif [[ $SYSTEM == "CentOS" || $SYSTEM == "Alma" || $SYSTEM == "Rocky" || $SYSTEM == "Fedora" ]]; then
+            cp -r /etc/yum.repos.d /etc/yum.repos.d.bak 2>/dev/null
+            sed -i 's/^mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/*.repo 2>/dev/null
+            sed -i 's/^#baseurl=/baseurl=/g' /etc/yum.repos.d/*.repo 2>/dev/null
+            sed -i 's/mirror.centos.org/mirrors.aliyun.com/g' /etc/yum.repos.d/*.repo 2>/dev/null
+            sed -i 's/download.fedoraproject.org/mirrors.aliyun.com/g' /etc/yum.repos.d/*.repo 2>/dev/null
+        fi
+        green "  [✔] 软件源已成功替换并备份完毕！"
+    else
+        green "  [跳过] 保留系统默认软件源。"
+    fi
+}
+
 check_env() {
     clear
     echo ""
@@ -190,7 +220,11 @@ check_env() {
     print_line
     echo ""
     green "  当前操作系统: $SYSTEM"
+
+    # 执行防卡死换源策略
+    change_system_source
     
+    echo ""
     yellow "  正在校准系统时钟 (防御 TLS 时钟偏移瘫痪)..."
     local date_str=$(curl -sI -m 3 https://google.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
     [[ -z "$date_str" ]] && date_str=$(curl -sI -m 3 https://cloudflare.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
