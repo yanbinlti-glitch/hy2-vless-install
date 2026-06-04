@@ -1,6 +1,6 @@
 {
-  "source": "/mnt/data/install.sh",
-  "line_count": 1750,
+  "source": "install.sh",
+  "entry": "install.sh",
   "modules": [
     {
       "file": "lib/00_ui.sh",
@@ -33,11 +33,16 @@
     {
       "file": "lib/07_menu.sh",
       "original_lines": "1695-1746"
+    },
+    {
+      "file": "lib/08_update.sh",
+      "original_lines": "post-split-added"
     }
   ],
-  "entry": "install.sh",
   "notes": [
     "01_system.sh removed old single-file shortcut copy/delete block; install.sh now installs /opt/hy2-vless-install plus /usr/bin/666 wrapper.",
-    "07_menu.sh contains only menu() function; main loop moved into root install.sh."
+    "07_menu.sh contains only menu() function; main loop moved into root install.sh.",
+    "08_update.sh is included by install.sh MODULES and used by 07_menu.sh option 10 for self_update.",
+    "00_ui.sh now defines CYAN and LIGHT_CYAN for menu color compatibility."
   ]
 }
