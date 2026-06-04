@@ -497,6 +497,131 @@ quick_repair_and_status() {
     read temp
 }
 
+
+apply_singbox_config_with_rollback() {
+    local backup="${1:-}"
+
+    if [[ ! -f /etc/sing-box/config.json ]]; then
+        red " 未检测到 /etc/sing-box/config.json，请先安装节点。"
+        return 1
+    fi
+
+    if [[ -z "$backup" || ! -f "$backup" ]]; then
+        backup="/etc/sing-box/config.json.bak.$(date +%F-%H%M%S)"
+        cp -a /etc/sing-box/config.json "$backup"
+    fi
+
+    chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+
+    if ! jq . /etc/sing-box/config.json >/dev/null 2>&1; then
+        red " [错误] JSON 结构校验失败，正在回滚。"
+        mv -f "$backup" /etc/sing-box/config.json
+        return 1
+    fi
+
+    if [[ -x /usr/local/bin/sing-box ]]; then
+        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config.json; then
+            red " [错误] sing-box 配置校验失败，正在回滚。"
+            mv -f "$backup" /etc/sing-box/config.json
+            restart_singbox_checked || true
+            return 1
+        fi
+    fi
+
+    restart_singbox_checked || {
+        red " [错误] sing-box 重启失败，正在回滚。"
+        mv -f "$backup" /etc/sing-box/config.json
+        restart_singbox_checked || true
+        return 1
+    }
+
+    generate_client_configs
+    green " [✔] 配置已生效，订阅已刷新。"
+    return 0
+}
+
+modify_vless_self_signed_cert() {
+    clear
+    print_line
+    green " 修改 VLESS 节点证书伪装参数 / Reality 密钥 "
+    print_line
+    echo ""
+
+    check_installed_nodes
+    if [[ $has_vless -eq 0 ]]; then
+        red " 未检测到 VLESS 节点，请先安装 VLESS。"
+        sleep 2
+        return
+    fi
+
+    ensure_singbox_core || return 1
+
+    local current_sni new_sni keypair_json v_private_key v_public_key v_short_id backup
+
+    current_sni=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config.json 2>/dev/null)
+    [[ -z "$current_sni" || "$current_sni" == "null" ]] && current_sni=$(cat /etc/sing-box/vless_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
+
+    yellow " 当前 VLESS 伪装域名 / SNI: $current_sni"
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入新的 VLESS 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
+    read new_sni || return
+    [[ -z "$new_sni" ]] && new_sni="$current_sni"
+
+    if [[ ! "$new_sni" =~ ^[A-Za-z0-9.-]+$ ]]; then
+        red " [错误] 域名格式不合法。"
+        sleep 2
+        return
+    fi
+
+    yellow " 正在生成新的 Reality keypair 与 short_id..."
+    keypair_json=$(/usr/local/bin/sing-box generate reality-keypair 2>/dev/null)
+    v_private_key=$(echo "$keypair_json" | awk '/PrivateKey/ {print $2}' | tr -d '"')
+    v_public_key=$(echo "$keypair_json" | awk '/PublicKey/ {print $2}' | tr -d '"')
+    v_short_id=$(/usr/local/bin/sing-box generate rand --hex 8 2>/dev/null)
+
+    if [[ -z "$v_private_key" || -z "$v_public_key" || -z "$v_short_id" ]]; then
+        red " [错误] Reality 密钥生成失败。"
+        sleep 2
+        return
+    fi
+
+    backup="/etc/sing-box/config.json.bak.vless-reality.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box/config.json "$backup"
+
+    if ! jq -e '.inbounds[] | select(.tag=="vless-in")' /etc/sing-box/config.json >/dev/null 2>&1; then
+        red " [错误] 配置中未找到 vless-in。"
+        sleep 2
+        return
+    fi
+
+    if ! jq --arg sni "$new_sni" --arg priv "$v_private_key" --arg sid "$v_short_id" '
+        (.inbounds[] | select(.tag=="vless-in") | .tls.server_name) = $sni
+        | (.inbounds[] | select(.tag=="vless-in") | .tls.reality.private_key) = $priv
+        | (.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id) = [$sid]
+        | (.inbounds[] | select(.tag=="vless-in") | .tls.reality.handshake.server) = $sni
+    ' /etc/sing-box/config.json > /tmp/sb_vless_reality.json; then
+        red " [错误] jq 修改失败。"
+        mv -f "$backup" /etc/sing-box/config.json
+        sleep 2
+        return
+    fi
+
+    mv -f /tmp/sb_vless_reality.json /etc/sing-box/config.json
+
+    if apply_singbox_config_with_rollback "$backup"; then
+        echo "$v_public_key" > /etc/sing-box/reality_pub.txt
+        echo "$new_sni" > /etc/sing-box/vless_sni.txt
+        generate_client_configs
+        green " [✔] VLESS 证书伪装参数 / Reality 密钥已更新。"
+    else
+        red " [错误] VLESS 修改失败，配置已回滚。"
+    fi
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    read temp
+}
+
 config_modify_menu() {
     while true; do
         clear
@@ -505,14 +630,16 @@ config_modify_menu() {
         print_line
         echo ""
         echo -e " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}修改配置文件${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 节点的自签名证书 / Reality 参数${PLAIN}"
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-1]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-2]: ${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
             1) edit_config ;;
+            2) modify_vless_self_signed_cert ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
