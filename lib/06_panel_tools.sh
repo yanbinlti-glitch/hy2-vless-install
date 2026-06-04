@@ -27,7 +27,7 @@ remove_node() {
     echo ""
     echo -e "  ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
     read rm_choice || return
 
     case $rm_choice in
@@ -38,6 +38,7 @@ remove_node() {
                 clean_env "keep_core"
                 green "  [✔] Hysteria 2 节点及关联服务已成功卸载！(核心已保留)"
             else
+                disable_hy2_port_hopping "quiet" || true
                 close_port_by_tag "hy2-in"
                 jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
                 generate_client_configs
@@ -675,6 +676,253 @@ modify_hy2_self_signed_cert() {
     read temp
 }
 
+hy2_hop_colon_range() {
+    echo "$1" | sed 's/-/:/'
+}
+
+remove_hy2_port_hop_rules() {
+    local hop_range="$1"
+    local main_port="$2"
+    local colon_range
+
+    [[ -z "$hop_range" || -z "$main_port" ]] && return 0
+    colon_range="$(hy2_hop_colon_range "$hop_range")"
+
+    for tool in iptables ip6tables; do
+        command -v "$tool" >/dev/null 2>&1 || continue
+
+        while "$tool" -t nat -C PREROUTING -p udp --dport "$colon_range" -j REDIRECT --to-ports "$main_port" 2>/dev/null; do
+            "$tool" -t nat -D PREROUTING -p udp --dport "$colon_range" -j REDIRECT --to-ports "$main_port" 2>/dev/null || break
+        done
+
+        while "$tool" -C INPUT -p udp --dport "$colon_range" -j ACCEPT 2>/dev/null; do
+            "$tool" -D INPUT -p udp --dport "$colon_range" -j ACCEPT 2>/dev/null || break
+        done
+    done
+}
+
+apply_hy2_port_hop_rules() {
+    local hop_range="$1"
+    local main_port="$2"
+    local colon_range
+
+    colon_range="$(hy2_hop_colon_range "$hop_range")"
+
+    if ! command -v iptables >/dev/null 2>&1; then
+        red " [错误] 未检测到 iptables，无法设置 Hy2 跳跃端口转发。"
+        return 1
+    fi
+
+    for tool in iptables ip6tables; do
+        command -v "$tool" >/dev/null 2>&1 || continue
+
+        "$tool" -C INPUT -p udp --dport "$colon_range" -j ACCEPT 2>/dev/null \
+            || "$tool" -A INPUT -p udp --dport "$colon_range" -j ACCEPT 2>/dev/null || true
+
+        "$tool" -t nat -C PREROUTING -p udp --dport "$colon_range" -j REDIRECT --to-ports "$main_port" 2>/dev/null \
+            || "$tool" -t nat -A PREROUTING -p udp --dport "$colon_range" -j REDIRECT --to-ports "$main_port" 2>/dev/null || true
+    done
+
+    if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        firewall-cmd --permanent --add-port="${hop_range}/udp" >/dev/null 2>&1 || true
+        firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
+
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi active; then
+        ufw allow "${colon_range}/udp" >/dev/null 2>&1 || true
+    fi
+
+    save_iptables || true
+    return 0
+}
+
+install_hy2_port_hop_service() {
+    cat > /usr/local/bin/hy2-port-hop-apply <<'HOPAPPLY'
+#!/usr/bin/env bash
+set -u
+
+range_file="/etc/sing-box/hy2_hop_ports.txt"
+main_file="/etc/sing-box/hy2_hop_main_port.txt"
+
+[[ -f "$range_file" && -f "$main_file" ]] || exit 0
+
+hop_range="$(cat "$range_file" 2>/dev/null | tr -d '[:space:]')"
+main_port="$(cat "$main_file" 2>/dev/null | tr -d '[:space:]')"
+colon_range="${hop_range/-/:}"
+
+[[ "$hop_range" =~ ^[0-9]+-[0-9]+$ ]] || exit 0
+[[ "$main_port" =~ ^[0-9]+$ ]] || exit 0
+
+for tool in iptables ip6tables; do
+    command -v "$tool" >/dev/null 2>&1 || continue
+
+    "$tool" -C INPUT -p udp --dport "$colon_range" -j ACCEPT 2>/dev/null \
+        || "$tool" -A INPUT -p udp --dport "$colon_range" -j ACCEPT 2>/dev/null || true
+
+    "$tool" -t nat -C PREROUTING -p udp --dport "$colon_range" -j REDIRECT --to-ports "$main_port" 2>/dev/null \
+        || "$tool" -t nat -A PREROUTING -p udp --dport "$colon_range" -j REDIRECT --to-ports "$main_port" 2>/dev/null || true
+done
+HOPAPPLY
+
+    chmod +x /usr/local/bin/hy2-port-hop-apply
+
+    if [[ "${SYSTEM:-}" == "Alpine" ]]; then
+        cat > /etc/init.d/hy2-port-hop <<'OPENRC'
+#!/sbin/openrc-run
+name="hy2-port-hop"
+description="Apply Hy2 port hopping NAT rules"
+command="/usr/local/bin/hy2-port-hop-apply"
+command_background="false"
+
+depend() {
+    need net
+}
+OPENRC
+        chmod +x /etc/init.d/hy2-port-hop
+        rc-update add hy2-port-hop default >/dev/null 2>&1 || true
+        rc-service hy2-port-hop restart >/dev/null 2>&1 || true
+    else
+        cat > /etc/systemd/system/hy2-port-hop.service <<'SYSTEMD'
+[Unit]
+Description=Apply Hy2 port hopping NAT rules
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hy2-port-hop-apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable --now hy2-port-hop.service >/dev/null 2>&1 || true
+    fi
+}
+
+disable_hy2_port_hopping() {
+    local quiet="${1:-}"
+    local old_range old_main
+
+    old_range=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
+    old_main=$(cat /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null | tr -d '[:space:]')
+
+    remove_hy2_port_hop_rules "$old_range" "$old_main"
+
+    if [[ "${SYSTEM:-}" == "Alpine" ]]; then
+        rc-service hy2-port-hop stop >/dev/null 2>&1 || true
+        rc-update del hy2-port-hop default >/dev/null 2>&1 || true
+        rm -f /etc/init.d/hy2-port-hop
+    else
+        systemctl disable --now hy2-port-hop.service >/dev/null 2>&1 || true
+        rm -f /etc/systemd/system/hy2-port-hop.service
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+
+    rm -f /usr/local/bin/hy2-port-hop-apply
+    rm -f /etc/sing-box/hy2_hop_ports.txt /etc/sing-box/hy2_hop_main_port.txt
+
+    save_iptables || true
+
+    [[ "$quiet" == "quiet" ]] || green " [✔] Hy2 跳跃端口已关闭。"
+}
+
+enable_hy2_port_hopping() {
+    clear
+    print_line
+    green " 开启 / 修改 Hysteria 2 跳跃端口 "
+    print_line
+    echo ""
+
+    check_installed_nodes
+    if [[ $has_hy2 -eq 0 ]]; then
+        red " 未检测到 Hysteria 2 节点，请先安装 Hy2。"
+        sleep 2
+        return
+    fi
+
+    local main_port old_range hop_range start_port end_port range_size confirm_large old_main
+    main_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json 2>/dev/null)
+
+    if [[ ! "$main_port" =~ ^[0-9]+$ ]]; then
+        red " [错误] 未能读取 Hy2 主端口。"
+        sleep 2
+        return
+    fi
+
+    old_range=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
+
+    yellow " 当前 Hy2 主端口: $main_port/udp"
+    [[ -n "$old_range" ]] && yellow " 当前跳跃端口段: $old_range/udp"
+    echo ""
+    yellow " 示例: 20000-30000"
+    yellow " 注意: VPS 安全组也需要放行这个 UDP 端口段。"
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入 Hy2 跳跃端口段 [0 关闭跳跃端口]: ${PLAIN}"
+    read hop_range || return
+
+    hop_range="$(echo "$hop_range" | tr -d '[:space:]')"
+
+    if [[ "$hop_range" == "0" ]]; then
+        disable_hy2_port_hopping
+        generate_client_configs
+        echo ""
+        echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+        read temp
+        return
+    fi
+
+    if [[ ! "$hop_range" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+        red " [错误] 端口段格式错误，应为 20000-30000。"
+        sleep 2
+        return
+    fi
+
+    start_port="${BASH_REMATCH[1]}"
+    end_port="${BASH_REMATCH[2]}"
+
+    if (( start_port < 1 || end_port > 65535 || start_port >= end_port )); then
+        red " [错误] 端口段范围无效，必须满足 1 <= 起始端口 < 结束端口 <= 65535。"
+        sleep 2
+        return
+    fi
+
+    range_size=$((end_port - start_port + 1))
+    if (( range_size > 10000 )); then
+        yellow " [提示] 端口段较大: $range_size 个 UDP 端口。"
+        echo -en " ${LIGHT_YELLOW} ▶ 是否继续？(y/n) [默认: n]: ${PLAIN}"
+        read confirm_large || confirm_large="n"
+        [[ -z "$confirm_large" ]] && confirm_large="n"
+        if [[ "$confirm_large" != "y" && "$confirm_large" != "Y" ]]; then
+            yellow " 已取消。"
+            sleep 1
+            return
+        fi
+    fi
+
+    if [[ -n "$old_range" && "$old_range" != "$hop_range" ]]; then
+        old_main=$(cat /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null | tr -d '[:space:]')
+        remove_hy2_port_hop_rules "$old_range" "$old_main"
+    fi
+
+    echo "$hop_range" > /etc/sing-box/hy2_hop_ports.txt
+    echo "$main_port" > /etc/sing-box/hy2_hop_main_port.txt
+
+    if apply_hy2_port_hop_rules "$hop_range" "$main_port"; then
+        install_hy2_port_hop_service
+        generate_client_configs
+        green " [✔] Hy2 跳跃端口已开启: $hop_range/udp -> $main_port/udp"
+        yellow " [提示] 请确认云厂商安全组也放行 UDP $hop_range。"
+    else
+        red " [错误] Hy2 跳跃端口配置失败。"
+    fi
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    read temp
+}
+
 config_modify_menu() {
     while true; do
         clear
@@ -685,6 +933,7 @@ config_modify_menu() {
         echo -e " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}修改配置文件${PLAIN}"
         echo -e " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 节点的自签名证书 / Reality 参数${PLAIN}"
         echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hy2 的自签名证书${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hy2 的跳跃端口${PLAIN}"
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
@@ -695,6 +944,7 @@ config_modify_menu() {
             1) edit_config ;;
             2) modify_vless_self_signed_cert ;;
             3) modify_hy2_self_signed_cert ;;
+            4) enable_hy2_port_hopping ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac

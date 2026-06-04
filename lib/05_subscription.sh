@@ -45,6 +45,10 @@ generate_client_configs() {
         local node_name=$(cat /etc/sing-box/hy2_name.txt 2>/dev/null || echo "Hy2_Node")
         local safe_node_name=$(NAME="$node_name" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('NAME', '')))")
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json)
+        local hop_ports=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
+        [[ ! "$hop_ports" =~ ^[0-9]+-[0-9]+$ ]] && hop_ports=""
+        local hy2_client_port="$bind_port"
+        [[ -n "$hop_ports" ]] && hy2_client_port="$hop_ports"
         local pwd=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .users[0].password' /etc/sing-box/config.json)
         local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
         local obfs=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .obfs?.password // empty' /etc/sing-box/config.json)
@@ -53,7 +57,7 @@ generate_client_configs() {
         local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
 
         local s_pwd=$(PWD="$pwd" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('PWD', '')))")
-        local url="hysteria2://$s_pwd@$uri_ip:$bind_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
+        local url="hysteria2://$s_pwd@$uri_ip:$hy2_client_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
         url="${url}#${safe_node_name}"
         
@@ -66,7 +70,7 @@ generate_client_configs() {
     type: hysteria2
     udp: true
     server: \"$yaml_json_ip\"
-    port: $bind_port
+    $(if [[ -n "$hop_ports" ]]; then printf 'ports: "%s"' "$hop_ports"; else printf 'port: %s' "$bind_port"; fi)
     password: '${pwd}'
     sni: \"$sni\"
     skip-cert-verify: true
@@ -80,7 +84,9 @@ generate_client_configs() {
         proxy_names="${proxy_names}
       - '${node_name}'"
         
-        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":true,\"certificate_public_key_sha256\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
+        local sb_hy2_port_json="\"server_port\":${bind_port}"
+        [[ -n "$hop_ports" ]] && sb_hy2_port_json="\"server_ports\":[\"${hop_ports}\"]"
+        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",${sb_hy2_port_json},\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":true,\"certificate_public_key_sha256\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
         [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
         sb_hy2_json="${sb_hy2_json}}"
         
@@ -242,6 +248,9 @@ EOF
 
 clean_env() {
     local mode="$1"
+    if command -v disable_hy2_port_hopping >/dev/null 2>&1; then
+        disable_hy2_port_hopping "quiet" || true
+    fi
     close_port_by_tag "hy2-in"
     close_port_by_tag "vless-in"
     close_port_by_tag "sub"
