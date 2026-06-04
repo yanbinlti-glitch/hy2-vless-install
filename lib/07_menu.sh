@@ -51,7 +51,7 @@ menu() {
     1 ) inst_singbox ;;
     2 ) remove_node ;;
     3 ) singbox_switch ;;
-    4 ) edit_config ;;
+    4 ) config_modify_menu ;;
     5 ) config_outbound ;;
     6 ) showconf ;;
     7 ) enable_bbr ;;

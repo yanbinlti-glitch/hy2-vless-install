@@ -497,4 +497,25 @@ quick_repair_and_status() {
     read temp
 }
 
+config_modify_menu() {
+    while true; do
+        clear
+        print_line
+        green " 查看 / 修改 配置文件 "
+        print_line
+        echo ""
+        echo -e " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}修改配置文件${PLAIN}"
+        echo ""
+        echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
+        echo ""
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-1]: ${PLAIN}"
+        read config_modify_choice || return
+
+        case "$config_modify_choice" in
+            1) edit_config ;;
+            0) return ;;
+            *) red " 输入无效"; sleep 1 ;;
+        esac
+    done
+}
 
