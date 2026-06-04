@@ -1,0 +1,26 @@
+name: shellcheck
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  bash-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: |
+          bash -n install.sh
+          find lib -name "*.sh" -print0 | xargs -0 -n1 bash -n
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          shellcheck install.sh
+          shellcheck lib/*.sh
