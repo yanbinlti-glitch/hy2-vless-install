@@ -39,6 +39,79 @@ inst_cert() {
     green "  自签证书 ($cert_sni) 生成并降权授权成功！"
 }
 
+
+is_valid_port() {
+  local port="$1"
+  local min="${2:-1}"
+  local max="${3:-65535}"
+
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  (( port >= min && port <= max ))
+}
+
+is_port_in_use() {
+  local port="$1"
+  local proto="${2:-tcp}"
+
+  if [[ "$proto" == "udp" ]]; then
+    ss -H -unl 2>/dev/null \
+      | awk '{for (i=1; i<=NF; i++) if ($i ~ /:[0-9]+$/ || $i ~ /\]:[0-9]+$/) print $i}' \
+      | sed 's/.*://' \
+      | grep -qx "$port"
+  else
+    ss -H -tnl 2>/dev/null \
+      | awk '{for (i=1; i<=NF; i++) if ($i ~ /:[0-9]+$/ || $i ~ /\]:[0-9]+$/) print $i}' \
+      | sed 's/.*://' \
+      | grep -qx "$port"
+  fi
+}
+
+read_free_port() {
+  local prompt="$1"
+  local default_value="$2"
+  local min="$3"
+  local max="$4"
+  local proto="$5"
+  local label="${6:-端口}"
+  local port=""
+  local try_count=0
+
+  READ_PORT_RESULT=""
+
+  while true; do
+    echo -en "$prompt"
+    read -r port || return 1
+
+    if [[ -z "$port" ]]; then
+      if [[ "$default_value" == "random" ]]; then
+        try_count=0
+        while (( try_count < 50 )); do
+          port="$(shuf -i "${min}-${max}" -n 1)"
+          if ! is_port_in_use "$port" "$proto"; then
+            break
+          fi
+          try_count=$((try_count + 1))
+        done
+      else
+        port="$default_value"
+      fi
+    fi
+
+    if ! is_valid_port "$port" "$min" "$max"; then
+      red " [警告] ${label}无效，必须是 ${min}-${max} 的数字。"
+      continue
+    fi
+
+    if is_port_in_use "$port" "$proto"; then
+      red " [警告] ${proto^^} 端口 $port 已被占用，请重新输入。"
+      continue
+    fi
+
+    READ_PORT_RESULT="$port"
+    return 0
+  done
+}
+
 inst_sub_port(){
     echo ""
     local history_port=""
@@ -330,19 +403,11 @@ inst_hysteria2() {
     echo ""
     print_line
     yellow "  Hysteria 2 主端口与网络配置"
-    echo -en " ${LIGHT_YELLOW} ▶ 设置 Hysteria 2 主端口 (UDP) [10000-65535] (回车随机): ${PLAIN}"
-    read port || port=$(shuf -i 10000-65535 -n 1)
-    [[ -z $port ]] && port=$(shuf -i 10000-65535 -n 1)
-    
-    while ss -unl | grep -E -q "(:|^)$port( |$)"; do
-        red " [警告] 端口 $port 已被占用！"
-        read port || exit 1
-        [[ -z $port ]] && port=$(shuf -i 10000-65535 -n 1)
-    done
-    green " 节点主端口已设置为: $port (UDP)"
-    open_port $port "udp" "hy2-in"
-    
-    echo ""
+    read_free_port " ${LIGHT_YELLOW} ▶ 设置 Hysteria 2 主端口 (UDP) [10000-65535] (回车随机): ${PLAIN}" "random" 10000 65535 "udp" "Hysteria 2 主端口" || return 1
+port="$READ_PORT_RESULT"
+green " 节点主端口已设置为: $port (UDP)"
+open_port "$port" "udp" "hy2-in"
+echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 设置节点连接密码 (回车自动生成): ${PLAIN}"
     read auth_pwd || exit 1
     [[ -z $auth_pwd ]] && auth_pwd=$(gen_random_str 16)
@@ -404,18 +469,11 @@ inst_vless_reality() {
     echo ""
     print_line
     yellow "  VLESS + Reality 端口与特征配置"
-    echo -en " ${LIGHT_YELLOW} ▶ 请设置 VLESS 主端口 (TCP) [1-65535] (回车默认 443，可自定义): ${PLAIN}"
-    read port || port=443
-    [[ -z $port ]] && port=443
-    
-    if ss -tnl | grep -E -q "(:|^)$port( |$)"; then
-        red " [高危阻断] TCP 端口 $port 已被占用！(请检查 Nginx 或其他 Web 进程)"
-        exit 1
-    fi
-    green " 节点主端口已设置为: $port (TCP)"
-    open_port $port "tcp" "vless-in"
-    
-    echo ""
+    read_free_port " ${LIGHT_YELLOW} ▶ 请设置 VLESS 主端口 (TCP) [1-65535] (回车默认 443，可自定义): ${PLAIN}" "443" 1 65535 "tcp" "VLESS 主端口" || return 1
+port="$READ_PORT_RESULT"
+green " 节点主端口已设置为: $port (TCP)"
+open_port "$port" "tcp" "vless-in"
+echo ""
     local v_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
     yellow "  VLESS Reality 伪装域名已自动继承基础设定: $v_sni"
     
