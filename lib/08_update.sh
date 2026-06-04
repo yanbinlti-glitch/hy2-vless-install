@@ -81,6 +81,65 @@ pause_after_update() {
   read -r _ || true
 }
 
+
+verify_update_checksums() {
+  local tmp_dir="$1"
+  local sums_file="$tmp_dir/SHA256SUMS"
+  local expected
+  local target
+  local actual
+  local failed=0
+
+  if [[ ! -s "$sums_file" ]]; then
+    red " [错误] 未找到 SHA256SUMS，已停止更新。"
+    return 1
+  fi
+
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    red " [错误] 当前系统缺少 sha256sum，无法校验更新文件。"
+    return 1
+  fi
+
+  yellow " 正在校验更新文件完整性..."
+
+  while read -r expected target _; do
+    [[ -z "$expected" || -z "$target" ]] && continue
+    [[ "$expected" =~ ^# ]] && continue
+
+    target="${target#./}"
+
+    case "$target" in
+      install.sh|VERSION|lib/*.sh)
+        ;;
+      *)
+        continue
+        ;;
+    esac
+
+    if [[ ! -f "$tmp_dir/$target" ]]; then
+      red " [错误] 校验失败，文件缺失: $target"
+      failed=1
+      continue
+    fi
+
+    actual="$(sha256sum "$tmp_dir/$target" | awk '{print $1}')"
+
+    if [[ "$actual" != "$expected" ]]; then
+      red " [错误] 校验失败: $target"
+      red "        期望: $expected"
+      red "        实际: $actual"
+      failed=1
+    fi
+  done < "$sums_file"
+
+  if [[ "$failed" -ne 0 ]]; then
+    return 1
+  fi
+
+  green " [✔] 更新文件完整性校验通过。"
+  return 0
+}
+
 self_update() {
   local install_dir="${INSTALL_DIR:-/opt/hy2-vless-install}"
   local base tmp_dir local_ver remote_ver bak_dir m confirm_update
@@ -151,6 +210,20 @@ self_update() {
     echo "$remote_ver" > "$tmp_dir/VERSION"
   fi
 
+  if ! download_update_file "$base/SHA256SUMS" "$tmp_dir/SHA256SUMS"; then
+    red " [错误] SHA256SUMS 下载失败，已停止更新。"
+    rm -rf "$tmp_dir"
+    pause_after_update
+    return 1
+  fi
+
+  if ! verify_update_checksums "$tmp_dir"; then
+    red " [错误] 更新文件完整性校验失败，已停止更新。"
+    rm -rf "$tmp_dir"
+    pause_after_update
+    return 1
+  fi
+
   yellow " 正在执行语法检查..."
   if ! bash -n "$tmp_dir/install.sh"; then
     red " [错误] install.sh 语法检查失败，已停止更新。"
@@ -176,7 +249,8 @@ self_update() {
 
   if ! cp -f "$tmp_dir/install.sh" "$install_dir/install.sh" \
     || ! cp -f "$tmp_dir"/lib/*.sh "$install_dir/lib/" \
-    || ! cp -f "$tmp_dir/VERSION" "$install_dir/VERSION"; then
+    || ! cp -f "$tmp_dir/VERSION" "$install_dir/VERSION" \
+    || ! cp -f "$tmp_dir/SHA256SUMS" "$install_dir/SHA256SUMS"; then
     red " [错误] 覆盖失败，正在尝试回滚。"
     restore_script_backup "$bak_dir" && green " [✔] 已回滚到更新前版本。"
     rm -rf "$tmp_dir"
