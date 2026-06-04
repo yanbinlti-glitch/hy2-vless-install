@@ -174,7 +174,7 @@ config_outbound() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-2]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -622,6 +622,59 @@ modify_vless_self_signed_cert() {
     read temp
 }
 
+
+modify_hy2_self_signed_cert() {
+    clear
+    print_line
+    green " 修改 Hysteria 2 自签名证书 "
+    print_line
+    echo ""
+
+    check_installed_nodes
+    if [[ $has_hy2 -eq 0 ]]; then
+        red " 未检测到 Hysteria 2 节点，请先安装 Hy2。"
+        sleep 2
+        return
+    fi
+
+    local cert_bak key_bak sni_bak
+    cert_bak="/tmp/hy2-cert.crt.bak.$(date +%s)"
+    key_bak="/tmp/hy2-private.key.bak.$(date +%s)"
+    sni_bak="/tmp/hy2-cert_sni.txt.bak.$(date +%s)"
+
+    [[ -f /etc/sing-box/cert.crt ]] && cp -a /etc/sing-box/cert.crt "$cert_bak"
+    [[ -f /etc/sing-box/private.key ]] && cp -a /etc/sing-box/private.key "$key_bak"
+    [[ -f /etc/sing-box/cert_sni.txt ]] && cp -a /etc/sing-box/cert_sni.txt "$sni_bak"
+
+    yellow " 当前 Hy2 证书域名: $(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo unknown)"
+    echo ""
+    yellow " 将重新生成 /etc/sing-box/cert.crt 与 /etc/sing-box/private.key"
+    echo ""
+
+    inst_cert || {
+        red " [错误] 自签名证书生成失败。"
+        sleep 2
+        return
+    }
+
+    if ! restart_singbox_checked; then
+        red " [错误] 新证书应用失败，正在回滚旧证书。"
+        [[ -f "$cert_bak" ]] && mv -f "$cert_bak" /etc/sing-box/cert.crt
+        [[ -f "$key_bak" ]] && mv -f "$key_bak" /etc/sing-box/private.key
+        [[ -f "$sni_bak" ]] && mv -f "$sni_bak" /etc/sing-box/cert_sni.txt
+        restart_singbox_checked || true
+        sleep 2
+        return
+    fi
+
+    generate_client_configs
+    green " [✔] Hy2 自签名证书已更新，订阅已刷新。"
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    read temp
+}
+
 config_modify_menu() {
     while true; do
         clear
@@ -631,6 +684,7 @@ config_modify_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}修改配置文件${PLAIN}"
         echo -e " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 节点的自签名证书 / Reality 参数${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hy2 的自签名证书${PLAIN}"
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
@@ -640,6 +694,7 @@ config_modify_menu() {
         case "$config_modify_choice" in
             1) edit_config ;;
             2) modify_vless_self_signed_cert ;;
+            3) modify_hy2_self_signed_cert ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
