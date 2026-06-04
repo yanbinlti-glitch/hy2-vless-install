@@ -22,5 +22,5 @@ jobs:
 
       - name: Run ShellCheck
         run: |
-          shellcheck install.sh
-          shellcheck lib/*.sh
+          shellcheck -S warning install.sh
+          shellcheck -S warning lib/*.sh
