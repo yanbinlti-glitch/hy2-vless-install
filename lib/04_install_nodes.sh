@@ -316,16 +316,67 @@ ensure_singbox_core() {
         *) red " [致命错误] Sing-box 暂不支持您的 CPU 架构: $arch！"; return 1 ;;
     esac
 
-    local sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r\n')
-    [[ -z "$sb_version" || "$sb_version" == "null" ]] && sb_version="v1.12.0"
-    local dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
+    local sb_release_json="/tmp/sing-box-release.json"
+    local sb_version=""
+    local sb_asset=""
+    local dl_url=""
+    local expected_digest=""
+    local expected_hash=""
+    local actual_hash=""
 
-    mkdir -p /usr/local/bin
+    rm -f "$sb_release_json"
+
+    if command -v jq >/dev/null 2>&1 && curl -fsSL -m 15 "https://api.github.com/repos/SagerNet/sing-box/releases/latest" -o "$sb_release_json" 2>/dev/null; then
+        sb_version="$(jq -r '.tag_name // empty' "$sb_release_json" 2>/dev/null)"
+    fi
+
+    if [[ -z "$sb_version" || "$sb_version" == "null" ]]; then
+        sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r\n')
+    fi
+
+    [[ -z "$sb_version" ]] && sb_version="v1.12.0"
+
+    sb_asset="sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
+
+    if [[ -s "$sb_release_json" ]] && command -v jq >/dev/null 2>&1; then
+        dl_url="$(jq -r --arg name "$sb_asset" '.assets[]? | select(.name == $name) | .browser_download_url // empty' "$sb_release_json" 2>/dev/null | head -n1)"
+        expected_digest="$(jq -r --arg name "$sb_asset" '.assets[]? | select(.name == $name) | .digest // empty' "$sb_release_json" 2>/dev/null | head -n1)"
+    fi
+
+    [[ -z "$dl_url" || "$dl_url" == "null" ]] && dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/${sb_asset}"
+
+    yellow "  目标版本: $sb_version ($sb_arch)，下载中..."
     rm -rf /tmp/sing-box*
-    wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url" || wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
+
+    if ! wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url"; then
+        wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
+    fi
+
     if [[ ! -s /tmp/sing-box.tar.gz ]]; then
-        red " [致命错误] Sing-box 核心下载失败！请检查网络。"
+        red " [致命错误] Sing-box 核心下载失败，请检查网络。"
         return 1
+    fi
+
+    if [[ "$expected_digest" == sha256:* ]]; then
+        expected_hash="${expected_digest#sha256:}"
+        actual_hash="$(sha256sum /tmp/sing-box.tar.gz | awk '{print $1}')"
+
+        if [[ "$expected_hash" == "$actual_hash" ]]; then
+            green "  Sing-box 核心 sha256 校验通过。"
+        else
+            red " [致命错误] Sing-box 核心 sha256 校验失败！"
+            red "  期望: $expected_hash"
+            red "  实际: $actual_hash"
+            rm -rf /tmp/sing-box*
+            return 1
+        fi
+    else
+        if [[ "${HY2_VLESS_REQUIRE_SB_CHECKSUM:-0}" == "1" ]]; then
+            red " [致命错误] HY2_VLESS_REQUIRE_SB_CHECKSUM=1，但未获取到 Sing-box 官方 digest。"
+            rm -rf /tmp/sing-box*
+            return 1
+        fi
+        yellow "  未获取到 Sing-box 官方 digest，跳过 sha256 校验。"
     fi
 
     tar -xzf /tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
