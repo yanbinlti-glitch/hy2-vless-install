@@ -950,4 +950,283 @@ config_modify_menu() {
         esac
     done
 }
+warp_ipv6_route_menu() {
+    while true; do
+        clear
+        print_line
+        green " WARP IPv6 域名分流设置 "
+        print_line
+        echo ""
+
+        if [[ ! -f /etc/sing-box/config.json ]]; then
+            red " 未检测到 Sing-box 配置文件，请先安装节点。"
+            sleep 2
+            return
+        fi
+
+        local iface domains
+        iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config.json 2>/dev/null)
+        domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box/config.json 2>/dev/null | paste -sd "," -)
+
+        if [[ -n "$iface" && "$iface" != "null" ]]; then
+            green " 当前状态: [已开启]"
+            yellow " WARP IPv6 接口: $iface"
+            yellow " 分流域名: ${domains:-未读取到}"
+        else
+            yellow " 当前状态: [未开启]"
+        fi
+
+        echo ""
+        echo -e " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}开启 / 修改 WARP IPv6 域名分流${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_RED}关闭 WARP IPv6 域名分流${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}查看当前 WARP IPv6 分流规则${PLAIN}"
+        echo ""
+        echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
+        echo ""
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
+        read warp_ipv6_choice || return
+
+        case "$warp_ipv6_choice" in
+            1) enable_warp_ipv6_route ;;
+            2) disable_warp_ipv6_route ;;
+            3) show_warp_ipv6_route ;;
+            0) return ;;
+            *) red " 输入无效"; sleep 1 ;;
+        esac
+    done
+}
+
+enable_warp_ipv6_route() {
+    clear
+    print_line
+    green " 开启 / 修改 WARP IPv6 域名分流 "
+    print_line
+    echo ""
+
+    if [[ ! -f /etc/sing-box/config.json ]]; then
+        red " 未检测到 Sing-box 配置文件，请先安装节点。"
+        sleep 2
+        return
+    fi
+
+    local current_iface current_domains iface domains domains_json test_choice backup
+
+    current_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config.json 2>/dev/null)
+    [[ -z "$current_iface" || "$current_iface" == "null" ]] && current_iface="wgcf"
+
+    current_domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box/config.json 2>/dev/null | paste -sd "," -)
+    [[ -z "$current_domains" ]] && current_domains="openai.com,chatgpt.com,oaistatic.com,oaiusercontent.com,anthropic.com,claude.ai,perplexity.ai,poe.com,gemini.google.com,aistudio.google.com,generativelanguage.googleapis.com"
+
+    yellow " 本功能要求 VPS 已经有可用的 WARP IPv6 网络接口。"
+    yellow " 常见接口名: wgcf / warp / CloudflareWARP"
+    echo ""
+
+    echo -en " ${LIGHT_YELLOW} ▶ WARP IPv6 接口名 [默认: $current_iface]: ${PLAIN}"
+    read iface || return
+    [[ -z "$iface" ]] && iface="$current_iface"
+
+    if [[ ! "$iface" =~ ^[A-Za-z0-9_.:-]+$ ]]; then
+        red " [错误] 接口名格式不合法。"
+        sleep 2
+        return
+    fi
+
+    if ! ip link show "$iface" >/dev/null 2>&1; then
+        red " [错误] 未检测到接口: $iface"
+        yellow " 请先安装 / 启动 WARP，并确认 ip link 能看到该接口。"
+        sleep 2
+        return
+    fi
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 分流域名，逗号分隔 [默认: $current_domains]: ${PLAIN}"
+    read domains || return
+    [[ -z "$domains" ]] && domains="$current_domains"
+
+    domains="$(echo "$domains" | tr '，' ',' | tr -d '[:space:]')"
+
+    domains_json=$(printf '%s' "$domains" | tr ',' '\n' | awk '
+      BEGIN { print "["; first=1 }
+      {
+        gsub(/^\.+/, "", $0)
+        if ($0 == "") next
+        if ($0 !~ /^[A-Za-z0-9.-]+$/) exit 2
+        if (!first) printf ","
+        printf "\"%s\"", $0
+        first=0
+      }
+      END { print "]" }
+    ')
+
+    if [[ $? -ne 0 || -z "$domains_json" || "$domains_json" == "[]" ]]; then
+        red " [错误] 域名列表格式不合法。"
+        sleep 2
+        return
+    fi
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 是否测试该接口 IPv6 出口？(y/n) [默认: y]: ${PLAIN}"
+    read test_choice || test_choice="y"
+    [[ -z "$test_choice" ]] && test_choice="y"
+
+    if [[ "$test_choice" == "y" || "$test_choice" == "Y" ]]; then
+        if command -v curl >/dev/null 2>&1; then
+            yellow " 正在测试 WARP IPv6 出口..."
+            if curl -6 --interface "$iface" --connect-timeout 8 -fsSL https://www.cloudflare.com/cdn-cgi/trace >/tmp/warp-ipv6-trace.txt 2>/dev/null; then
+                green " [✔] WARP IPv6 出口测试通过。"
+                grep -E 'ip=|warp=' /tmp/warp-ipv6-trace.txt 2>/dev/null || true
+            else
+                red " [错误] WARP IPv6 出口测试失败。"
+                yellow " 请确认该接口具备 IPv6 出口能力。"
+                sleep 2
+                return
+            fi
+        else
+            yellow " 未检测到 curl，跳过 IPv6 出口测试。"
+        fi
+    fi
+
+    backup="/etc/sing-box/config.json.bak.warp-ipv6.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box/config.json "$backup"
+
+    jq --arg iface "$iface" --argjson domains "$domains_json" '
+      .outbounds = ((.outbounds // []) | map(select(.tag != "warp-ipv6")))
+      | .outbounds += [
+          {
+            "type": "direct",
+            "tag": "warp-ipv6",
+            "bind_interface": $iface,
+            "domain_strategy": "ipv6_only"
+          }
+        ]
+      | .route = (.route // {})
+      | .route.rules = (
+          [
+            {
+              "domain_suffix": $domains,
+              "outbound": "warp-ipv6"
+            }
+          ]
+          + ((.route.rules // []) | map(select(.outbound != "warp-ipv6")))
+        )
+    ' /etc/sing-box/config.json > /tmp/sb_warp_ipv6.json
+
+    if [[ $? -ne 0 || ! -s /tmp/sb_warp_ipv6.json ]]; then
+        red " [错误] jq 写入 WARP IPv6 分流配置失败。"
+        mv -f "$backup" /etc/sing-box/config.json
+        sleep 2
+        return
+    fi
+
+    mv -f /tmp/sb_warp_ipv6.json /etc/sing-box/config.json
+    chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+
+    if [[ -x /usr/local/bin/sing-box ]]; then
+        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config.json; then
+            red " [错误] sing-box 配置校验失败，正在回滚。"
+            mv -f "$backup" /etc/sing-box/config.json
+            restart_singbox_checked || true
+            sleep 2
+            return
+        fi
+    fi
+
+    restart_singbox_checked || {
+        red " [错误] sing-box 重启失败，正在回滚。"
+        mv -f "$backup" /etc/sing-box/config.json
+        restart_singbox_checked || true
+        sleep 2
+        return
+    }
+
+    green " [✔] WARP IPv6 域名分流已开启。"
+    yellow " 接口: $iface"
+    yellow " 域名: $domains"
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    read temp
+}
+
+disable_warp_ipv6_route() {
+    clear
+    print_line
+    green " 关闭 WARP IPv6 域名分流 "
+    print_line
+    echo ""
+
+    if [[ ! -f /etc/sing-box/config.json ]]; then
+        red " 未检测到 Sing-box 配置文件。"
+        sleep 2
+        return
+    fi
+
+    local backup
+    backup="/etc/sing-box/config.json.bak.disable-warp-ipv6.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box/config.json "$backup"
+
+    jq '
+      .outbounds = ((.outbounds // []) | map(select(.tag != "warp-ipv6")))
+      | .route.rules = ((.route.rules // []) | map(select(.outbound != "warp-ipv6")))
+    ' /etc/sing-box/config.json > /tmp/sb_disable_warp_ipv6.json
+
+    if [[ $? -ne 0 || ! -s /tmp/sb_disable_warp_ipv6.json ]]; then
+        red " [错误] jq 清理 WARP IPv6 分流配置失败。"
+        mv -f "$backup" /etc/sing-box/config.json
+        sleep 2
+        return
+    fi
+
+    mv -f /tmp/sb_disable_warp_ipv6.json /etc/sing-box/config.json
+    chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+
+    if [[ -x /usr/local/bin/sing-box ]]; then
+        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config.json; then
+            red " [错误] 清理后配置校验失败，正在回滚。"
+            mv -f "$backup" /etc/sing-box/config.json
+            restart_singbox_checked || true
+            sleep 2
+            return
+        fi
+    fi
+
+    restart_singbox_checked || {
+        red " [错误] sing-box 重启失败，正在回滚。"
+        mv -f "$backup" /etc/sing-box/config.json
+        restart_singbox_checked || true
+        sleep 2
+        return
+    }
+
+    green " [✔] WARP IPv6 域名分流已关闭。"
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    read temp
+}
+
+show_warp_ipv6_route() {
+    clear
+    print_line
+    green " 当前 WARP IPv6 域名分流规则 "
+    print_line
+    echo ""
+
+    if [[ ! -f /etc/sing-box/config.json ]]; then
+        red " 未检测到 Sing-box 配置文件。"
+        sleep 2
+        return
+    fi
+
+    yellow " WARP IPv6 出站:"
+    jq '.outbounds[]? | select(.tag=="warp-ipv6")' /etc/sing-box/config.json 2>/dev/null || true
+
+    echo ""
+    yellow " WARP IPv6 分流规则:"
+    jq '.route.rules[]? | select(.outbound=="warp-ipv6")' /etc/sing-box/config.json 2>/dev/null || true
+
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    read temp
+}
 

@@ -39,11 +39,12 @@ menu() {
   echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
   echo -e " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
   echo -e " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_CYAN}检查 / 在线更新脚本${PLAIN}"
+    echo -e " ${LIGHT_GREEN}[11]${PLAIN} ${LIGHT_CYAN}WARP IPv6 域名分流${PLAIN}"
   echo "----------------------------------------------------------------------------------"
   echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
   echo ""
-  echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-10]: ${PLAIN}"
+  echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-11]: ${PLAIN}"
 
   read menuInput || exit 1
 
@@ -57,7 +58,7 @@ menu() {
     7 ) enable_bbr ;;
     8 ) global_uninstall ;;
     9 ) quick_repair_and_status ;;
-    10 ) self_update ;;
+    10 ) self_update ;; 11 ) warp_ipv6_route_menu ;;
     0 ) exit 0 ;;
     * ) red " 输入无效"; sleep 1 ;;
   esac
