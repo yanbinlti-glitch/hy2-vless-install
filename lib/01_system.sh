@@ -31,7 +31,7 @@ case $(echo "$SYS" | tr '[:upper:]' '[:lower:]') in
         PKG_UPDATE="apt-get update"
         PKG_INSTALL="apt-get -y install"
         ;;
-    centos|rhel|almalinux|rocky)
+    centos|rhel|almalinux|rocky|ol|amzn)
         SYSTEM="CentOS"
         PKG_UPDATE="yum -y update"
         PKG_INSTALL="yum -y install"
