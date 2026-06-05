@@ -188,10 +188,9 @@ menu() {
   echo -e " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_GREEN}配置 出口落地代理与分流 (IP 检测 & 流媒体解锁)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
   echo -e " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_CYAN}检查 / 在线更新脚本${PLAIN}"
-  
+  echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_CYAN}检查 / 在线更新脚本${PLAIN}"
+  echo -e " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
+  echo -e " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
   echo -e " ${LIGHT_GREEN}[11]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
   echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
