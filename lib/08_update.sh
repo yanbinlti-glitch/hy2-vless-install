@@ -322,8 +322,14 @@ EOF_WRAPPER
     export HY2_VLESS_VERSION
 
     green " [✔] 更新完成: ${local_ver} -> ${remote_ver}"
-    yellow " [提示] 请重新运行 666 进入新版菜单。"
+    yellow " [提示] 3 秒后自动重启新版面板..."
+    sleep 3
 
+    if [[ -f "$install_dir/install.sh" ]]; then
+        exec bash "$install_dir/install.sh"
+    fi
+
+    red " [错误] 自动重启新版面板失败，请手动运行: 666"
     pause_after_update
-    return 0
+    return 1
 }
