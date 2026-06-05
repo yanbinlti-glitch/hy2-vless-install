@@ -23,14 +23,12 @@ get_github_latest_commit_sha() {
     fi
 
     sha="$(printf '%s\n' "$json" | grep -m1 '"sha"' | sed -E 's/.*"sha"[[:space:]]*:[[:space:]]*"([0-9a-f]{40})".*/\1/')"
-
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
     echo "$sha"
 }
 
 get_update_base() {
     local ref sha
-
     ref="${HY2_VLESS_UPDATE_REF:-}"
 
     if [[ -n "$ref" ]]; then
@@ -126,11 +124,8 @@ verify_update_checksums() {
         target="${target#./}"
 
         case "$target" in
-            install.sh|VERSION|lib/*.sh)
-                ;;
-            *)
-                continue
-                ;;
+            install.sh|VERSION|lib/*.sh) ;;
+            *) continue ;;
         esac
 
         if [[ ! -f "$tmp_dir/$target" ]]; then
@@ -153,8 +148,7 @@ verify_update_checksums() {
 }
 
 self_update() {
-    local base tmp_dir local_ver remote_ver bak_dir install_dir
-    local confirm_update m
+    local base tmp_dir local_ver remote_ver bak_dir install_dir confirm_update m
     local -a update_modules fallback_modules
 
     fallback_modules=(
@@ -322,7 +316,6 @@ exec bash "$install_dir/install.sh" "\$@"
 EOF_WRAPPER
 
     chmod +x /usr/bin/666
-
     rm -rf "$tmp_dir"
 
     HY2_VLESS_VERSION="$remote_ver"
