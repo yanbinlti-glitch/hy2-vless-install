@@ -142,9 +142,9 @@ main_realtime_status_panel() {
         warp_iface="未检测到"
     fi
 
-    echo -e " ${LIGHT_CYAN}──────────────────────────────────────────────────────────${PLAIN}"
+    echo -e " ${LIGHT_CYAN}────────────────────────────────────────────────────────────────────${PLAIN}"
     echo -e " ${LIGHT_CYAN}实时状态面板${PLAIN}"
-    echo -e " ${LIGHT_CYAN}──────────────────────────────────────────────────────────${PLAIN}"
+    echo -e " ${LIGHT_CYAN}────────────────────────────────────────────────────────────────────${PLAIN}"
     echo -e " ${LIGHT_YELLOW}脚本版本:${PLAIN} v${script_ver}    ${LIGHT_YELLOW}Sing-box内核:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新正式版:${PLAIN} ${sb_latest}"
     echo -e " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel}    ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
     echo -e " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}    ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}"
@@ -152,7 +152,7 @@ main_realtime_status_panel() {
     echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
     echo ""
     main_status_show_node_info
-    echo -e " ${LIGHT_CYAN}──────────────────────────────────────────────────────────${PLAIN}"
+    echo -e " ${LIGHT_CYAN}────────────────────────────────────────────────────────────────────${PLAIN}"
     echo ""
 }
 
