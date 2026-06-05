@@ -250,7 +250,7 @@ migrate_legacy_dns_config() {
               .
             end
           )
-        ' /etc/sing-box/config.json > /tmp/sb_dns.json && mv /tmp/sb_dns.json /etc/sing-box/config.json
+        ' /etc/sing-box/config.json > /tmp/sb_dns.json && [ -s /tmp/sb_dns.json ] && mv /tmp/sb_dns.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] DNS 配置迁移完成。"
     fi
@@ -264,7 +264,7 @@ fix_dns_detour_direct_config() {
     if jq -e '.dns.servers[]? | select((.detour // "") == "direct")' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  检测到 DNS 残留 detour=direct，正在移除以兼容新版 sing-box..."
         cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns-detour.$(date +%F-%H%M%S)" || true
-        jq '(.dns.servers[]? | select((.detour // "") == "direct")) |= del(.detour)'           /etc/sing-box/config.json > /tmp/sb_dns_detour.json && mv /tmp/sb_dns_detour.json /etc/sing-box/config.json
+        jq '(.dns.servers[]? | select((.detour // "") == "direct")) |= del(.detour)'           /etc/sing-box/config.json > /tmp/sb_dns_detour.json && [ -s /tmp/sb_dns_detour.json ] && mv /tmp/sb_dns_detour.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] DNS detour 兼容修复完成。"
     fi
@@ -278,7 +278,7 @@ migrate_legacy_route_config() {
     if jq -e '.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null)))' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  检测到旧版路由规则，正在补充 action=route..."
         cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.route.$(date +%F-%H%M%S)" || true
-        jq '(.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null))) | .action) = "route"'           /etc/sing-box/config.json > /tmp/sb_route.json && mv /tmp/sb_route.json /etc/sing-box/config.json
+        jq '(.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null))) | .action) = "route"'           /etc/sing-box/config.json > /tmp/sb_route.json && [ -s /tmp/sb_route.json ] && mv /tmp/sb_route.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] 路由规则兼容修复完成。"
     fi
@@ -293,7 +293,7 @@ fix_listen_for_no_ipv6() {
     if jq -e '.inbounds[]? | select(.listen == "::")' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  当前系统未启用 IPv6，正在把监听地址从 :: 改为 0.0.0.0..."
         cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.listen.$(date +%F-%H%M%S)" || true
-        jq '(.inbounds[]? | select(.listen == "::") | .listen) = "0.0.0.0"'           /etc/sing-box/config.json > /tmp/sb_listen.json && mv /tmp/sb_listen.json /etc/sing-box/config.json
+        jq '(.inbounds[]? | select(.listen == "::") | .listen) = "0.0.0.0"'           /etc/sing-box/config.json > /tmp/sb_listen.json && [ -s /tmp/sb_listen.json ] && mv /tmp/sb_listen.json /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] 监听地址兼容修复完成。"
     fi
@@ -490,10 +490,10 @@ echo ""
       "listen_port": ($p | tonumber),
       "users": [{"password": $pwd}],
       "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
-    }]' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
+    }]' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
     
     if [[ -n "$obfs_pwd" ]]; then
-        jq --arg obfs "$obfs_pwd" '( .inbounds[] | select(.tag=="hy2-in") ) += { "obfs": {"type": "salamander", "password": $obfs} }' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
+        jq --arg obfs "$obfs_pwd" '( .inbounds[] | select(.tag=="hy2-in") ) += { "obfs": {"type": "salamander", "password": $obfs} }' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
     fi
     
     chmod 600 /etc/sing-box/config.json
@@ -565,7 +565,7 @@ echo ""
           "short_id": [$sid]
         }
       }
-    }]' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
+    }]' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
     
     chmod 600 /etc/sing-box/config.json
     svc_enable sing-box

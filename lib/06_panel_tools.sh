@@ -40,7 +40,7 @@ remove_node() {
             else
                 disable_hy2_port_hopping "quiet" || true
                 close_port_by_tag "hy2-in"
-                jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
+                jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
                 generate_client_configs
                 restart_singbox_checked
                 green "  [✔] Hysteria 2 节点已成功卸载！"
@@ -55,7 +55,7 @@ remove_node() {
                 green "  [✔] VLESS 节点及关联服务已成功卸载！(核心已保留)"
             else
                 close_port_by_tag "vless-in"
-                jq 'del(.inbounds[] | select(.tag=="vless-in"))' /etc/sing-box/config.json > /tmp/sb.json && mv /tmp/sb.json /etc/sing-box/config.json
+                jq 'del(.inbounds[] | select(.tag=="vless-in"))' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
                 generate_client_configs
                 restart_singbox_checked
                 green "  [✔] VLESS 节点已成功卸载！"
