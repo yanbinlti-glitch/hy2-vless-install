@@ -151,7 +151,6 @@ main_realtime_status_panel() {
     echo -e " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
     echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
      red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    echo ""
     main_status_show_node_info
     echo ""
 }
