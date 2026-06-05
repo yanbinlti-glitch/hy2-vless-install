@@ -175,7 +175,7 @@ config_outbound() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -1076,6 +1076,216 @@ show_warp_ipv6_status_panel() {
     echo ""
 }
 
+install_or_repair_warp_ipv6_iface() {
+    clear
+    print_line
+    green " 安装 / 修复 WARP IPv6 接口 "
+    print_line
+    echo ""
+
+    if [[ "$(id -u)" -ne 0 ]]; then
+        red " [错误] 请使用 root 用户运行。"
+        sleep 2
+        return
+    fi
+
+    local iface="wgcf"
+    local mark="51820"
+    local work_dir="/etc/wireguard"
+    local tmp_dir="/tmp/wgcf-install.$$"
+    local arch wgcf_url wgcf_bin latest_api
+    local pkg_ok=0
+
+    yellow " 本功能将安装 wgcf + WireGuard，并创建接口: $iface"
+    yellow " 将使用 Table = off + fwmark 策略路由，避免接管系统默认 IPv6。"
+    echo ""
+
+    echo -en " ${LIGHT_YELLOW} ▶ 是否继续安装 / 修复 WARP IPv6 接口？(y/n) [默认: y]: ${PLAIN}"
+    read confirm_install || confirm_install="y"
+    [[ -z "$confirm_install" ]] && confirm_install="y"
+
+    if [[ "$confirm_install" != "y" && "$confirm_install" != "Y" ]]; then
+        yellow " 已取消。"
+        sleep 1
+        return
+    fi
+
+    mkdir -p "$work_dir" "$tmp_dir"
+
+    yellow " 正在安装依赖: curl jq wireguard-tools iproute2 ca-certificates..."
+
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq wireguard-tools iproute2 ca-certificates && pkg_ok=1
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y curl jq wireguard-tools iproute ca-certificates && pkg_ok=1
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y curl jq wireguard-tools iproute ca-certificates && pkg_ok=1
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache curl jq wireguard-tools iproute2 ca-certificates && pkg_ok=1
+    else
+        red " [错误] 未识别的软件包管理器，请手动安装 curl jq wireguard-tools iproute2。"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    fi
+
+    if [[ "$pkg_ok" -ne 1 ]]; then
+        red " [错误] 依赖安装失败。"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    fi
+
+    if ! command -v wg >/dev/null 2>&1 || ! command -v wg-quick >/dev/null 2>&1; then
+        red " [错误] wireguard-tools 未正确安装。"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    fi
+
+    if ! command -v wgcf >/dev/null 2>&1; then
+        yellow " 未检测到 wgcf，正在下载最新版本..."
+
+        case "$(uname -m)" in
+            x86_64|amd64) arch="amd64" ;;
+            aarch64|arm64) arch="arm64" ;;
+            armv7*|armv6*) arch="armv7" ;;
+            *) arch="amd64" ;;
+        esac
+
+        latest_api="$(curl -fsSL --connect-timeout 10 https://api.github.com/repos/ViRb3/wgcf/releases/latest 2>/dev/null)"
+
+        wgcf_url="$(printf '%s' "$latest_api" \
+            | jq -r --arg arch "$arch" '.assets[]? | select(.name | test("linux_" + $arch + "$")) | .browser_download_url' 2>/dev/null \
+            | head -n1)"
+
+        if [[ -z "$wgcf_url" || "$wgcf_url" == "null" ]]; then
+            wgcf_url="$(printf '%s' "$latest_api" \
+                | grep -oE 'https://[^"]+linux_'"$arch" \
+                | head -n1)"
+        fi
+
+        if [[ -z "$wgcf_url" ]]; then
+            red " [错误] 未能获取 wgcf 下载地址。"
+            rm -rf "$tmp_dir"
+            sleep 2
+            return
+        fi
+
+        if ! curl -fL --connect-timeout 20 "$wgcf_url" -o "$tmp_dir/wgcf"; then
+            red " [错误] wgcf 下载失败。"
+            rm -rf "$tmp_dir"
+            sleep 2
+            return
+        fi
+
+        install -m 0755 "$tmp_dir/wgcf" /usr/local/bin/wgcf
+    fi
+
+    if ! command -v wgcf >/dev/null 2>&1; then
+        red " [错误] wgcf 安装失败。"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    fi
+
+    yellow " 正在生成 WARP 配置..."
+
+    cd "$tmp_dir" || {
+        red " [错误] 无法进入临时目录。"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    }
+
+    if [[ ! -f "$work_dir/wgcf-account.toml" ]]; then
+        if ! wgcf register --accept-tos; then
+            red " [错误] wgcf 注册失败。"
+            rm -rf "$tmp_dir"
+            sleep 2
+            return
+        fi
+        cp -f wgcf-account.toml "$work_dir/wgcf-account.toml"
+    else
+        cp -f "$work_dir/wgcf-account.toml" "$tmp_dir/wgcf-account.toml"
+    fi
+
+    if ! wgcf generate; then
+        red " [错误] wgcf 配置生成失败。"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    fi
+
+    if [[ ! -f wgcf-profile.conf ]]; then
+        red " [错误] 未生成 wgcf-profile.conf。"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    fi
+
+    cp -f wgcf-profile.conf "$work_dir/${iface}.conf"
+
+    # 避免 wg-quick 自动接管系统默认路由
+    if ! grep -q '^Table *= *off' "$work_dir/${iface}.conf"; then
+        sed -i '/^\[Interface\]/a Table = off' "$work_dir/${iface}.conf"
+    fi
+
+    # 加 PostUp/PostDown，给 sing-box routing_mark=51820 使用
+    sed -i '/^PostUp *=/d;/^PostDown *=/d' "$work_dir/${iface}.conf"
+
+    cat >> "$work_dir/${iface}.conf" <<POSTROUTE
+
+PostUp = ip -6 route replace default dev %i table ${mark}; ip -6 rule add fwmark ${mark} table ${mark} 2>/dev/null || true
+PostDown = ip -6 rule del fwmark ${mark} table ${mark} 2>/dev/null || true; ip -6 route flush table ${mark} 2>/dev/null || true
+POSTROUTE
+
+    chmod 600 "$work_dir/${iface}.conf"
+
+    yellow " 正在启动 WARP IPv6 接口: $iface"
+
+    wg-quick down "$iface" >/dev/null 2>&1 || true
+
+    if ! wg-quick up "$iface"; then
+        red " [错误] wg-quick up $iface 失败。"
+        yellow " 可查看: cat $work_dir/${iface}.conf"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable "wg-quick@${iface}" >/dev/null 2>&1 || true
+    elif command -v rc-update >/dev/null 2>&1; then
+        rc-update add wireguard default >/dev/null 2>&1 || true
+    fi
+
+    ip -6 route replace default dev "$iface" table "$mark" 2>/dev/null || true
+    ip -6 rule add fwmark "$mark" table "$mark" 2>/dev/null || true
+
+    green " [✔] WARP IPv6 接口已启动: $iface"
+
+    if command -v curl >/dev/null 2>&1; then
+        yellow " 正在测试 WARP IPv6 出口..."
+        if curl -6 --interface "$iface" --connect-timeout 10 -fsSL https://www.cloudflare.com/cdn-cgi/trace >/tmp/warp-ipv6-trace.txt 2>/dev/null; then
+            green " [✔] WARP IPv6 出口测试通过。"
+            grep -E 'ip=|warp=' /tmp/warp-ipv6-trace.txt 2>/dev/null || true
+        else
+            yellow " [提示] 接口已启动，但 curl IPv6 测试失败。"
+            yellow " 可稍后运行: curl -6 --interface $iface https://www.cloudflare.com/cdn-cgi/trace"
+        fi
+    fi
+
+    rm -rf "$tmp_dir"
+
+    echo ""
+    yellow " 下一步：返回菜单选择 [1] 开启 / 修改 WARP IPv6 域名分流，接口名填写: $iface"
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    read temp
+}
+
 warp_ipv6_route_menu() {
     while true; do
         clear
@@ -1118,6 +1328,7 @@ warp_ipv6_route_menu() {
             1) enable_warp_ipv6_route ;;
             2) disable_warp_ipv6_route ;;
             3) show_warp_ipv6_route ;;
+            4) install_or_repair_warp_ipv6_iface ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
@@ -1224,6 +1435,7 @@ enable_warp_ipv6_route() {
             "type": "direct",
             "tag": "warp-ipv6",
             "bind_interface": $iface,
+            "routing_mark": 51820,
             "domain_strategy": "ipv6_only"
           }
         ]
