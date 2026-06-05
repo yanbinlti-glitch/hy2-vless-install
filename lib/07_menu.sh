@@ -142,17 +142,17 @@ main_realtime_status_panel() {
         warp_iface="未检测到"
     fi
 
-    echo -e " ${LIGHT_CYAN}────────────────────────────────────────────────────────────────────${PLAIN}"
+    echo -e 
     echo -e " ${LIGHT_CYAN}实时状态面板${PLAIN}"
-    echo -e " ${LIGHT_CYAN}────────────────────────────────────────────────────────────────────${PLAIN}"
-    echo -e " ${LIGHT_YELLOW}脚本版本:${PLAIN} v${script_ver}    ${LIGHT_YELLOW}Sing-box内核:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新正式版:${PLAIN} ${sb_latest}"
-    echo -e " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel}    ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
-    echo -e " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}    ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}"
-    echo -e " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}    ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"
+    echo -e 
+    echo -e " ${LIGHT_YELLOW}Sing-box内核:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新正式版:${PLAIN} ${sb_latest}"    ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}"
+    echo -e " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel}    
+    echo -e " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}     ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
+    echo -e " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
+    echo -e " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
     echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
     echo ""
     main_status_show_node_info
-    echo -e " ${LIGHT_CYAN}────────────────────────────────────────────────────────────────────${PLAIN}"
     echo ""
 }
 
@@ -185,14 +185,15 @@ menu() {
   echo "----------------------------------------------------------------------------------"
   echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}启动 / 停止 / 重启服务${PLAIN}"
   echo -e " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_PURPLE}查看 / 修改 配置文件${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_GREEN}配置 出口落地代理与分流 (IP 检测 & 流媒体解锁)${PLAIN}"
+  echo -e " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_CYAN}WARP IPv6 域名分流${PLAIN}"
+  echo -e " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_GREEN}配置 出口落地代理与分流 (IP 检测 & 流媒体解锁)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
-  echo -e " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
+  echo -e " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
+  echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
   echo -e " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
   echo -e " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_CYAN}检查 / 在线更新脚本${PLAIN}"
-    echo -e " ${LIGHT_GREEN}[11]${PLAIN} ${LIGHT_CYAN}WARP IPv6 域名分流${PLAIN}"
+  
+  echo -e " ${LIGHT_GREEN}[11]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
   echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
