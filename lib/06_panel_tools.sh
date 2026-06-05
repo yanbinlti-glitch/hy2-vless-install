@@ -164,15 +164,20 @@ config_outbound() {
     local current_outbound=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -n "$current_outbound" && "$current_outbound" != "null" ]]; then
         local out_server=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server' /etc/sing-box/config.json 2>/dev/null)
+        local is_tls=$(jq -r '.outbounds[] | select(.tag=="proxy") | .tls.enabled' /etc/sing-box/config.json 2>/dev/null)
+        
+        local display_type="$current_outbound"
+        [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="https"
+        
         local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "智能分流")
-        yellow "  当前状态: [已开启] 落地代理模式 (类型: $current_outbound | 目标: $out_server | 模式: $is_global)"
+        yellow "  当前状态: [已开启] 落地代理模式 (类型: ${display_type^^} | 目标: $out_server | 模式: $is_global)"
     else
         green "  当前状态: [未开启] 本机 IP 直连输出"
     fi
     echo ""
     
     echo -e "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 智能分流代理 (仅 Netflix/ChatGPT 等流媒体走中转)${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走 SOCKS5 中转)${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走落地中转)${PLAIN}"
     echo -e "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
@@ -183,8 +188,25 @@ config_outbound() {
     case $out_choice in
         1|2)
             echo ""
-            yellow "  ▶ 请输入中转 SOCKS5 代理 IP 或域名:"
-            echo -en " ${LIGHT_YELLOW} ▶ 地址: ${PLAIN}"
+            yellow "  ▶ 请选择落地代理协议类型:"
+            echo -e "    ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
+            echo -e "    ${LIGHT_GREEN}[2]${PLAIN} HTTP"
+            echo -e "    ${LIGHT_GREEN}[3]${PLAIN} HTTPS (HTTP + TLS)"
+            echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
+            read proxy_type_choice || proxy_type_choice=1
+            [[ -z "$proxy_type_choice" ]] && proxy_type_choice=1
+            
+            local proxy_type="socks"
+            local proxy_tls="false"
+            case "$proxy_type_choice" in
+                2) proxy_type="http"; proxy_tls="false" ;;
+                3) proxy_type="http"; proxy_tls="true" ;;
+                *) proxy_type="socks"; proxy_tls="false" ;;
+            esac
+
+            echo ""
+            yellow "  ▶ 请输入落地代理节点信息:"
+            echo -en " ${LIGHT_YELLOW} ▶ IP 或 域名: ${PLAIN}"
             read proxy_addr || exit 1
             [[ -z "$proxy_addr" ]] && return
             
@@ -200,12 +222,15 @@ config_outbound() {
             echo ""
             yellow "  正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
             
-            jq --arg addr "$proxy_addr" --arg port "$proxy_port" --arg user "$proxy_user" --arg pass "$proxy_pass" '
-              if $user != "" then
-                {"type":"socks","tag":"proxy","server":$addr,"server_port":($port|tonumber),"username":$user,"password":$pass}
-              else
-                {"type":"socks","tag":"proxy","server":$addr,"server_port":($port|tonumber)}
-              end
+            jq --arg type "$proxy_type" --arg tls "$proxy_tls" --arg addr "$proxy_addr" --arg port "$proxy_port" --arg user "$proxy_user" --arg pass "$proxy_pass" '
+              {
+                "type": $type,
+                "tag": "proxy",
+                "server": $addr,
+                "server_port": ($port|tonumber)
+              }
+              | if $user != "" then . + {"username": $user, "password": $pass} else . end
+              | if $tls == "true" then . + {"tls": {"enabled": true, "server_name": $addr}} else . end
             ' <<<'{}' > /tmp/outbound_block.json
 
             if [[ "$out_choice" == "1" ]]; then
