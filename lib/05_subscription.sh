@@ -206,6 +206,7 @@ EOF
     cat << EOF > "$nginx_conf_file"
 server {
     listen $sub_port;
+    server_tokens off;
     $listen_ipv6
     
     root $web_dir;
@@ -227,7 +228,7 @@ server {
         add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0';
     }
 
-    location / { return 403; }
+    location / { return 444; }
 }
 EOF
 

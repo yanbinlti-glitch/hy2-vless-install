@@ -72,13 +72,10 @@ main_status_singbox_version() {
 
 main_status_latest_singbox_version() {
     local latest=""
-
     if command -v curl >/dev/null 2>&1; then
-        latest=$(curl -fsSL --connect-timeout 3 https://api.github.com/repos/SagerNet/sing-box/releases/latest 2>/dev/null \
-            | grep -m1 '"tag_name"' \
-            | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+        latest=$(curl -sI -m 3 https://github.com/SagerNet/sing-box/releases/latest 2>/dev/null | grep -i location | awk -F '/' '{print $NF}' | tr -d '
+')
     fi
-
     [[ -n "$latest" ]] && echo "$latest" || echo "获取失败"
 }
 

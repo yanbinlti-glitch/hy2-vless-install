@@ -200,7 +200,7 @@ EOF
 build_base_json() {
     cat << EOF > /etc/sing-box/config.json
 {
-  "log": { "level": "info", "timestamp": true },
+  "log": { "level": "warn", "timestamp": true },
   "dns": {
     "servers": [
       {
