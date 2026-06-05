@@ -59,6 +59,7 @@ generate_client_configs() {
 
         local s_pwd=$(PWD="$pwd" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('PWD', '')))")
         local url="hysteria2://$s_pwd@$uri_ip:$hy2_client_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
+        [[ -n "$hop_ports" ]] && url="${url}&mport=${hop_ports}"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
         url="${url}#${safe_node_name}"
         
