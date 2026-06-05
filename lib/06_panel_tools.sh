@@ -164,22 +164,24 @@ config_outbound() {
     local current_outbound=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -n "$current_outbound" && "$current_outbound" != "null" ]]; then
         local out_server=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server' /etc/sing-box/config.json 2>/dev/null)
-        yellow "  当前状态: [已开启] 落地代理模式 (类型: $current_outbound | 目标: $out_server)"
+        local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "智能分流")
+        yellow "  当前状态: [已开启] 落地代理模式 (类型: $current_outbound | 目标: $out_server | 模式: $is_global)"
     else
         green "  当前状态: [未开启] 本机 IP 直连输出"
     fi
     echo ""
     
-    echo -e "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 / 修改 落地代理与智能流媒体分流${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 智能分流代理 (仅 Netflix/ChatGPT 等流媒体走中转)${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走 SOCKS5 中转)${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
-        1)
+        1|2)
             echo ""
             yellow "  ▶ 请输入中转 SOCKS5 代理 IP 或域名:"
             echo -en " ${LIGHT_YELLOW} ▶ 地址: ${PLAIN}"
@@ -206,24 +208,34 @@ config_outbound() {
               end
             ' <<<'{}' > /tmp/outbound_block.json
 
-            jq --slurpfile ob /tmp/outbound_block.json '
-              del(.outbounds[] | select(.tag=="proxy")) |
-              del(.route.rules[] | select(.outbound=="proxy")) |
-              .outbounds += $ob |
-              .route.rules = [{"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
-            ' /etc/sing-box/config.json > /tmp/sb_out.json
+            if [[ "$out_choice" == "1" ]]; then
+                jq --slurpfile ob /tmp/outbound_block.json '
+                  del(.outbounds[] | select(.tag=="proxy")) |
+                  del(.route.rules[] | select(.outbound=="proxy")) |
+                  .outbounds += $ob |
+                  .route.rules = [{"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
+                ' /etc/sing-box/config.json > /tmp/sb_out.json
+            else
+                jq --slurpfile ob /tmp/outbound_block.json '
+                  del(.outbounds[] | select(.tag=="proxy")) |
+                  del(.route.rules[] | select(.outbound=="proxy")) |
+                  .outbounds += $ob |
+                  .route.rules = .route.rules + [{"action": "route", "outbound": "proxy"}]
+                ' /etc/sing-box/config.json > /tmp/sb_out.json
+            fi
+
             if [ -s /tmp/sb_out.json ]; then mv /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
             
             green "  新落地代理配置写入完毕！"
             restart_singbox_checked
             sleep 1
             if is_svc_active sing-box; then
-                green "  [✔] 重启成功！静态住宅 IP 落地规则已全面生效。"
+                green "  [✔] 重启成功！落地规则已全面生效。"
             else
                 red "  [✘] 致命错误：新配置应用后服务无法启动！"
             fi
             ;;
-        2)
+        3)
             yellow "  正在清除中转路由配置..."
             jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy"))' /etc/sing-box/config.json > /tmp/sb_out.json
             if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
