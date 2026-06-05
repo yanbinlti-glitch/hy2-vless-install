@@ -373,6 +373,7 @@ net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
 net.ipv4.tcp_fastopen=3
 net.ipv4.tcp_mtu_probing=1
+net.ipv4.tcp_notsent_lowat=16384
 net.ipv4.ip_local_port_range=1024 65535
 net.core.rmem_max=67108864
 net.core.rmem_default=26214400

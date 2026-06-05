@@ -238,6 +238,7 @@ EOF
     fi
 
     yellow "  正在执行 Nginx 配置校验，完整输出如下："
+    sed -i 's/^worker_processes.*/worker_processes 1;/g' /etc/nginx/nginx.conf 2>/dev/null || true
     if nginx -t; then
         svc_enable nginx
         if is_svc_active nginx; then
