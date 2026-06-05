@@ -212,7 +212,7 @@ config_outbound() {
               .outbounds += $ob |
               .route.rules = [{"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
             ' /etc/sing-box/config.json > /tmp/sb_out.json
-            mv /tmp/sb_out.json /etc/sing-box/config.json
+            if [ -s /tmp/sb_out.json ]; then mv /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
             
             green "  新落地代理配置写入完毕！"
             restart_singbox_checked
@@ -226,7 +226,7 @@ config_outbound() {
         2)
             yellow "  正在清除中转路由配置..."
             jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy"))' /etc/sing-box/config.json > /tmp/sb_out.json
-            mv -f /tmp/sb_out.json /etc/sing-box/config.json
+            if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
             
             restart_singbox_checked
             sleep 1
