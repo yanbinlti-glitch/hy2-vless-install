@@ -950,6 +950,132 @@ config_modify_menu() {
         esac
     done
 }
+
+detect_public_ipv6_addr() {
+    ip -6 addr show scope global 2>/dev/null \
+        | awk '/inet6/ {print $2}' \
+        | cut -d/ -f1 \
+        | grep -E '^[23][0-9a-fA-F:]+' \
+        | head -n1
+}
+
+detect_warp_ipv6_iface() {
+    local configured_iface candidate
+
+    configured_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config.json 2>/dev/null | head -n1)
+    if [[ -n "$configured_iface" && "$configured_iface" != "null" ]] && ip link show "$configured_iface" >/dev/null 2>&1; then
+        echo "$configured_iface"
+        return 0
+    fi
+
+    for candidate in wgcf warp CloudflareWARP; do
+        if ip link show "$candidate" >/dev/null 2>&1; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    ip -o link show 2>/dev/null \
+        | awk -F': ' '{print $2}' \
+        | grep -Ei 'warp|wgcf|cloudflare' \
+        | head -n1
+}
+
+iface_has_ipv6_addr() {
+    local iface="$1"
+    [[ -z "$iface" ]] && return 1
+
+    ip -6 addr show dev "$iface" scope global 2>/dev/null \
+        | awk '/inet6/ {print $2}' \
+        | cut -d/ -f1 \
+        | grep -Eq '^[23][0-9a-fA-F:]|^2a09:|^2606:|^fd'
+}
+
+test_default_ipv6_egress() {
+    command -v curl >/dev/null 2>&1 || return 2
+    curl -6 --connect-timeout 5 -fsSL https://www.cloudflare.com/cdn-cgi/trace >/tmp/hy2-default-ipv6-trace.txt 2>/dev/null
+}
+
+test_iface_ipv6_egress() {
+    local iface="$1"
+    [[ -z "$iface" ]] && return 1
+    command -v curl >/dev/null 2>&1 || return 2
+    curl -6 --interface "$iface" --connect-timeout 6 -fsSL https://www.cloudflare.com/cdn-cgi/trace >/tmp/hy2-warp-ipv6-trace.txt 2>/dev/null
+}
+
+show_warp_ipv6_status_panel() {
+    local public_ipv6 warp_iface configured_iface domains default_status iface_status warp_trace warp_mark
+
+    public_ipv6=$(detect_public_ipv6_addr)
+    warp_iface=$(detect_warp_ipv6_iface)
+
+    configured_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config.json 2>/dev/null | head -n1)
+    domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box/config.json 2>/dev/null | paste -sd "," -)
+
+    echo -e " ${LIGHT_CYAN}实时 VPS / WARP IPv6 检测面板${PLAIN}"
+    echo -e " ${LIGHT_CYAN}──────────────────────────────────────────────────────────${PLAIN}"
+
+    if [[ -n "$public_ipv6" ]]; then
+        green " VPS IPv6 地址: 支持 ($public_ipv6)"
+    else
+        red " VPS IPv6 地址: 未检测到公网 IPv6"
+    fi
+
+    if test_default_ipv6_egress; then
+        default_status=$(grep -E '^ip=' /tmp/hy2-default-ipv6-trace.txt 2>/dev/null | head -n1 | cut -d= -f2-)
+        green " 默认 IPv6 出口: 可用 (${default_status:-已连通})"
+    else
+        case "$?" in
+            2) yellow " 默认 IPv6 出口: 未测试，系统缺少 curl" ;;
+            *) red " 默认 IPv6 出口: 不可用" ;;
+        esac
+    fi
+
+    if [[ -n "$warp_iface" ]]; then
+        green " WARP IPv6 接口: 检测到 ($warp_iface)"
+        if iface_has_ipv6_addr "$warp_iface"; then
+            green " WARP 接口 IPv6 地址: 支持"
+        else
+            red " WARP 接口 IPv6 地址: 未检测到"
+        fi
+
+        if test_iface_ipv6_egress "$warp_iface"; then
+            warp_trace=$(grep -E '^ip=' /tmp/hy2-warp-ipv6-trace.txt 2>/dev/null | head -n1 | cut -d= -f2-)
+            warp_mark=$(grep -E '^warp=' /tmp/hy2-warp-ipv6-trace.txt 2>/dev/null | head -n1 | cut -d= -f2-)
+            green " WARP IPv6 出口: 可用 (${warp_trace:-已连通}, warp=${warp_mark:-unknown})"
+        else
+            case "$?" in
+                2) yellow " WARP IPv6 出口: 未测试，系统缺少 curl" ;;
+                *) red " WARP IPv6 出口: 不可用" ;;
+            esac
+        fi
+    else
+        red " WARP IPv6 接口: 未检测到"
+    fi
+
+    if [[ -n "$configured_iface" && "$configured_iface" != "null" ]]; then
+        green " 当前分流状态: 已开启"
+        yellow " 当前绑定接口: $configured_iface"
+        yellow " 当前分流域名: ${domains:-未读取到}"
+    else
+        yellow " 当前分流状态: 未开启"
+    fi
+
+    if [[ -z "$public_ipv6" && -z "$warp_iface" ]]; then
+        echo ""
+        red " 结论: 当前 VPS 未检测到 IPv6 / WARP IPv6，不支持开启 IPv6 域名分流。"
+    elif [[ -z "$warp_iface" ]]; then
+        echo ""
+        yellow " 结论: VPS 可能有 IPv6，但未检测到 WARP 接口；请先安装或启动 WARP。"
+    else
+        echo ""
+        green " 结论: 检测到 IPv6/WARP 信息，可尝试开启 WARP IPv6 域名分流。"
+    fi
+
+    echo -e " ${LIGHT_CYAN}──────────────────────────────────────────────────────────${PLAIN}"
+    echo ""
+}
+
 warp_ipv6_route_menu() {
     while true; do
         clear
@@ -957,6 +1083,8 @@ warp_ipv6_route_menu() {
         green " WARP IPv6 域名分流设置 "
         print_line
         echo ""
+
+        show_warp_ipv6_status_panel
 
         if [[ ! -f /etc/sing-box/config.json ]]; then
             red " 未检测到 Sing-box 配置文件，请先安装节点。"
