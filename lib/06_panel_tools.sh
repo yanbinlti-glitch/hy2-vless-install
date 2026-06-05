@@ -1232,14 +1232,19 @@ install_or_repair_warp_ipv6_iface() {
         sed -i '/^\[Interface\]/a Table = off' "$work_dir/${iface}.conf"
     fi
 
-    # 加 PostUp/PostDown，给 sing-box routing_mark=51820 使用
+    # 加 PostUp/PostDown，必须写入 [Interface] 段，不能追加到 [Peer] 后面
     sed -i '/^PostUp *=/d;/^PostDown *=/d' "$work_dir/${iface}.conf"
 
-    cat >> "$work_dir/${iface}.conf" <<POSTROUTE
+    awk -v mark="$mark" '
+        /^\\[Peer\\]/ && !done {
+            print "PostUp = ip -6 route replace default dev %i table " mark "; ip -6 rule add fwmark " mark " table " mark " 2>/dev/null || true"
+            print "PostDown = ip -6 rule del fwmark " mark " table " mark " 2>/dev/null || true; ip -6 route flush table " mark " 2>/dev/null || true"
+            done=1
+        }
+        { print }
+    ' "$work_dir/${iface}.conf" > /tmp/wgcf.conf.fixed
 
-PostUp = ip -6 route replace default dev %i table ${mark}; ip -6 rule add fwmark ${mark} table ${mark} 2>/dev/null || true
-PostDown = ip -6 rule del fwmark ${mark} table ${mark} 2>/dev/null || true; ip -6 route flush table ${mark} 2>/dev/null || true
-POSTROUTE
+    mv -f /tmp/wgcf.conf.fixed "$work_dir/${iface}.conf"
 
     chmod 600 "$work_dir/${iface}.conf"
 
