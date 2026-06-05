@@ -154,6 +154,8 @@ setup_singbox_service() {
     if [[ $SYSTEM == "Alpine" ]]; then
         cat << 'EOF' > /etc/init.d/sing-box
 #!/sbin/openrc-run
+export GOMEMLIMIT=50MiB
+export GOGC=20
 description="Sing-box Service"
 command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
@@ -171,6 +173,8 @@ Description=Sing-box Service
 After=network.target
 
 [Service]
+Environment="GOMEMLIMIT=50MiB"
+Environment="GOGC=20"
 Type=simple
 User=root
 WorkingDirectory=/etc/sing-box
