@@ -1318,10 +1318,11 @@ warp_ipv6_route_menu() {
         echo -e " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}开启 / 修改 WARP IPv6 域名分流${PLAIN}"
         echo -e " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_RED}关闭 WARP IPv6 域名分流${PLAIN}"
         echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}查看当前 WARP IPv6 分流规则${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_CYAN}安装 / 修复 WARP IPv6 接口 (wgcf)${PLAIN}"
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
         read warp_ipv6_choice || return
 
         case "$warp_ipv6_choice" in
