@@ -71,7 +71,8 @@ generate_client_configs() {
     type: hysteria2
     udp: true
     server: \"$yaml_json_ip\"
-    $(if [[ -n "$hop_ports" ]]; then printf 'ports: "%s"' "$hop_ports"; else printf 'port: %s' "$bind_port"; fi)
+    port: $bind_port
+    $(if [[ -n "$hop_ports" ]]; then printf 'ports: "%s"' "$hop_ports"; fi)
     password: '${pwd}'
     sni: \"$sni\"
     skip-cert-verify: true
@@ -86,7 +87,7 @@ generate_client_configs() {
       - '${node_name}'"
         
         local sb_hy2_port_json="\"server_port\":${bind_port}"
-        [[ -n "$hop_ports" ]] && sb_hy2_port_json="\"server_ports\":[\"${hop_ports}\"]"
+        [[ -n "$hop_ports" ]] && sb_hy2_port_json="\"server_port\":${bind_port},\"server_ports\":[\"${hop_ports}\"]"
         local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",${sb_hy2_port_json},\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":true,\"certificate_public_key_sha256\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
         [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
         sb_hy2_json="${sb_hy2_json}}"
