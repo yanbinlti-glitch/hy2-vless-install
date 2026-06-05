@@ -7,13 +7,35 @@
 
 
 main_status_get_public_ipv4() {
-    ip -4 route get 1.1.1.1 2>/dev/null \
-        | awk '{for (i=1; i<=NF; i++) if ($i=="src") {print $(i+1); exit}}'
+    local ip=""
+    if command -v curl >/dev/null 2>&1; then
+        ip=$(curl -fsSLk -m 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
+        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api.ipify.org 2>/dev/null | tr -d '[:space:]')
+    fi
+    if [[ -z "$ip" || ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v wget >/dev/null 2>&1; then
+        ip=$(wget -qO- -T 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
+        [[ -z "$ip" ]] && ip=$(wget -qO- -T 4 http://api.ipify.org 2>/dev/null | tr -d '[:space:]')
+    fi
+    if [[ -z "$ip" || ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i=="src") {print $(i+1); exit}}')
+    fi
+    echo "$ip"
 }
 
 main_status_get_public_ipv6() {
-    ip -o -6 addr show scope global 2>/dev/null \
-        | awk '$2 != "wgcf" && $2 !~ /warp/i && $4 !~ /^fd/ {split($4,a,"/"); print a[1]; exit}'
+    local ip=""
+    if command -v curl >/dev/null 2>&1; then
+        ip=$(curl -fsSLk -m 4 http://ipv6.icanhazip.com 2>/dev/null | tr -d '[:space:]')
+        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api64.ipify.org 2>/dev/null | tr -d '[:space:]')
+    fi
+    if [[ -z "$ip" || ! "$ip" =~ ":" ]] && command -v wget >/dev/null 2>&1; then
+        ip=$(wget -qO- -T 4 http://ipv6.icanhazip.com 2>/dev/null | tr -d '[:space:]')
+        [[ -z "$ip" ]] && ip=$(wget -qO- -T 4 http://api64.ipify.org 2>/dev/null | tr -d '[:space:]')
+    fi
+    if [[ -z "$ip" || ! "$ip" =~ ":" ]]; then
+        ip=$(ip -o -6 addr show scope global 2>/dev/null | awk '$2 != "wgcf" && $2 !~ /warp/i && $4 !~ /^fd/ {split($4,a,"/"); print a[1]; exit}')
+    fi
+    echo "$ip"
 }
 
 main_status_get_warp_iface() {
