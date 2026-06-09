@@ -28,21 +28,12 @@ get_github_latest_commit_sha() {
 }
 
 get_update_base() {
-    local ref sha
-    ref="${HY2_VLESS_UPDATE_REF:-}"
-
+    local ref="${HY2_VLESS_UPDATE_REF:-}"
     if [[ -n "$ref" ]]; then
         echo "https://raw.githubusercontent.com/${HY2_REPO_OWNER}/${HY2_REPO_NAME}/${ref}"
         return 0
     fi
-
-    sha="$(get_github_latest_commit_sha 2>/dev/null || true)"
-
-    if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-        echo "https://raw.githubusercontent.com/${HY2_REPO_OWNER}/${HY2_REPO_NAME}/${sha}"
-    else
-        get_raw_base
-    fi
+    get_raw_base
 }
 
 get_local_version() {
