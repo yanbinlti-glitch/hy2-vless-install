@@ -161,6 +161,9 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background=true
 pidfile="/run/sing-box.pid"
+respawn="yes"
+respawn_max=5
+respawn_period=60
 output_log="/var/log/sing-box.log"
 error_log="/var/log/sing-box.log"
 rc_ulimit="-n 524288"
@@ -193,6 +196,20 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 EOF
+
+        # 商业级安全与日志轮转配置
+        mkdir -p /etc/logrotate.d
+        cat << 'LOGEOF' > /etc/logrotate.d/sing-box
+/var/log/sing-box.log {
+    daily
+    rotate 3
+    missingok
+    notifempty
+    compress
+    copytruncate
+}
+LOGEOF
+        chmod 600 /etc/sing-box/config.json /etc/sing-box/*.crt /etc/sing-box/*.key 2>/dev/null || true
         systemctl daemon-reload
     fi
 }
