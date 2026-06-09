@@ -259,6 +259,7 @@ main_realtime_status_panel() {
     ipv6=$(cat /tmp/hy2_ipv6.tmp 2>/dev/null)
     sb_latest=$(cat /tmp/hy2_sblatest.tmp 2>/dev/null)
     landing_ip=$(cat /tmp/hy2_landing.tmp 2>/dev/null)
+    rm -f /tmp/hy2_ipv4.tmp /tmp/hy2_ipv6.tmp /tmp/hy2_sblatest.tmp /tmp/hy2_landing.tmp 2>/dev/null
     
     warp_iface=$(main_status_get_warp_iface)
     script_ver="${HY2_VLESS_VERSION:-dev}"
