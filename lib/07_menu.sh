@@ -242,12 +242,27 @@ main_realtime_status_panel() {
     arch=$(uname -m 2>/dev/null || echo "unknown")
     virt=$(main_status_detect_virtualization)
     bbr=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")
-    ipv4=$(main_status_get_public_ipv4)
-    ipv6=$(main_status_get_public_ipv6)
+
+    # 异步并发执行耗时网络探测，极限压缩菜单加载时间
+    main_status_get_public_ipv4 > /tmp/hy2_ipv4.tmp 2>/dev/null &
+    PID1=$!
+    main_status_get_public_ipv6 > /tmp/hy2_ipv6.tmp 2>/dev/null &
+    PID2=$!
+    main_status_latest_singbox_version > /tmp/hy2_sblatest.tmp 2>/dev/null &
+    PID3=$!
+    main_status_landing_ip > /tmp/hy2_landing.tmp 2>/dev/null &
+    PID4=$!
+    
+    wait $PID1 $PID2 $PID3 $PID4
+
+    ipv4=$(cat /tmp/hy2_ipv4.tmp 2>/dev/null)
+    ipv6=$(cat /tmp/hy2_ipv6.tmp 2>/dev/null)
+    sb_latest=$(cat /tmp/hy2_sblatest.tmp 2>/dev/null)
+    landing_ip=$(cat /tmp/hy2_landing.tmp 2>/dev/null)
+    
     warp_iface=$(main_status_get_warp_iface)
     script_ver="${HY2_VLESS_VERSION:-dev}"
     sb_ver=$(main_status_singbox_version)
-    sb_latest=$(main_status_latest_singbox_version)
     local landing_info=$(main_status_landing_info)
 
     if is_svc_active sing-box; then

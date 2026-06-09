@@ -177,6 +177,9 @@ check_env() {
             run_with_timeout 240 "apt-get -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -y install curl wget sudo procps iptables-persistent netfilter-persistent iproute2 python3 openssl socat qrencode jq coreutils nginx tar" || { red " [错误] 依赖安装失败！"; exit 1; }
         fi
         echo ""
+        if ! command -v logrotate >/dev/null 2>&1; then
+            $PKG_INSTALL logrotate >/dev/null 2>&1 || true
+        fi
         green "  [✔] 所有前置依赖补全完成，二维码组件 qrencode 已纳入安装。"
     else
         echo ""

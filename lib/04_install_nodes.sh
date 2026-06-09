@@ -150,6 +150,18 @@ inst_sub_port(){
 }
 
 setup_singbox_service() {
+    local total_mem_mb=$(free -m | awk '/Mem:/ {print $2}')
+    local sys_gomem="50MiB"
+    local sys_gogc="20"
+    if [[ -n "$total_mem_mb" && "$total_mem_mb" -gt 1024 ]]; then
+        sys_gomem="250MiB"
+        sys_gogc="60"
+    elif [[ -n "$total_mem_mb" && "$total_mem_mb" -gt 400 ]]; then
+        sys_gomem="100MiB"
+        sys_gogc="40"
+    fi
+    yellow "  根据物理机内存 ($total_mem_mb MB) 动态下发 Go 回收策略: GOMEMLIMIT=$sys_gomem"
+
     yellow "  正在装配 Sing-box 系统级守护进程 (挂载高强度沙盒防御)..."
     if [[ $SYSTEM == "Alpine" ]]; then
         cat << 'EOF' > /etc/init.d/sing-box
@@ -211,6 +223,16 @@ EOF
 LOGEOF
         chmod 600 /etc/sing-box/config.json /etc/sing-box/*.crt /etc/sing-box/*.key 2>/dev/null || true
         systemctl daemon-reload
+    fi
+
+    if [[ -f /etc/init.d/sing-box ]]; then
+        sed -i "s/GOMEMLIMIT=50MiB/GOMEMLIMIT=$sys_gomem/g" /etc/init.d/sing-box
+        sed -i "s/GOGC=20/GOGC=$sys_gogc/g" /etc/init.d/sing-box
+    fi
+    if [[ -f /etc/systemd/system/sing-box.service ]]; then
+        sed -i "s/GOMEMLIMIT=50MiB/GOMEMLIMIT=$sys_gomem/g" /etc/systemd/system/sing-box.service
+        sed -i "s/GOGC=20/GOGC=$sys_gogc/g" /etc/systemd/system/sing-box.service
+        systemctl daemon-reload 2>/dev/null || true
     fi
 }
 
