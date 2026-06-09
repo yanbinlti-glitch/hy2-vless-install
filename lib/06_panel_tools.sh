@@ -990,11 +990,8 @@ config_modify_menu() {
 }
 
 detect_public_ipv6_addr() {
-    ip -6 addr show scope global 2>/dev/null \
-        | awk '/inet6/ {print $2}' \
-        | cut -d/ -f1 \
-        | grep -E '^[23][0-9a-fA-F:]+' \
-        | head -n1
+    ip -o -6 addr show scope global 2>/dev/null \
+        | awk '$2 !~ /^(wgcf|warp|CloudflareWARP|tun)/ && $4 ~ /^[23]/ {split($4,a,"/"); print a[1]; exit}'
 }
 
 detect_warp_ipv6_iface() {
@@ -1264,6 +1261,9 @@ install_or_repair_warp_ipv6_iface() {
     fi
 
     cp -f wgcf-profile.conf "$work_dir/${iface}.conf"
+
+    # 强制替换为 CF 官方高可用 IP，解决 DNS 污染或无法握手的问题
+    sed -i 's/engage.cloudflareclient.com/162.159.192.1/g' "$work_dir/${iface}.conf"
 
     # 避免 wg-quick 自动接管系统默认路由
     if ! grep -q '^Table *= *off' "$work_dir/${iface}.conf"; then
