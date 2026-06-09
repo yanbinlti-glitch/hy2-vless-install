@@ -128,6 +128,57 @@ main_status_show_node_info() {
     fi
 }
 
+
+main_status_landing_info() {
+    if [[ ! -f /etc/sing-box/config.json ]]; then
+        echo "未知"
+        return
+    fi
+    local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
+    if [[ -z "$has_proxy" || "$has_proxy" == "null" ]]; then
+        local geo=$(curl -fsSLk -m 3 "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
+        if [[ "$status" == "success" ]]; then
+            local country=$(echo "$geo" | jq -r '.country')
+            local city=$(echo "$geo" | jq -r '.city')
+            local isp=$(echo "$geo" | jq -r '.isp')
+            echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} $country $city ($isp)"
+        else
+            echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} 获取归属地超时"
+        fi
+    else
+        local p_type=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json)
+        local p_server=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server' /etc/sing-box/config.json)
+        local p_port=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server_port' /etc/sing-box/config.json)
+        local p_user=$(jq -r '.outbounds[] | select(.tag=="proxy") | .username // empty' /etc/sing-box/config.json)
+        local p_pass=$(jq -r '.outbounds[] | select(.tag=="proxy") | .password // empty' /etc/sing-box/config.json)
+        local p_tls=$(jq -r '.outbounds[] | select(.tag=="proxy") | .tls.enabled // empty' /etc/sing-box/config.json)
+        local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "分流")
+        
+        local curl_proxy=""
+        local proto_prefix="socks5h"
+        if [[ "$p_type" == "http" ]]; then
+            proto_prefix="http"
+            [[ "$p_tls" == "true" ]] && proto_prefix="https"
+        fi
+        if [[ -n "$p_user" ]]; then
+            curl_proxy="-x ${proto_prefix}://${p_user}:${p_pass}@${p_server}:${p_port}"
+        else
+            curl_proxy="-x ${proto_prefix}://${p_server}:${p_port}"
+        fi
+        local geo=$(curl -fsSLk -m 4 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
+        if [[ "$status" == "success" ]]; then
+            local ip=$(echo "$geo" | jq -r '.query')
+            local country=$(echo "$geo" | jq -r '.country')
+            local isp=$(echo "$geo" | jq -r '.isp')
+            echo -e "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} $ip ($country - $isp)"
+        else
+            echo -e "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} 检测失败 (节点超时或阻断)"
+        fi
+    fi
+}
+
 main_realtime_status_panel() {
     local os_name kernel arch virt bbr ipv4 ipv6 warp_iface warp_ipv6 sb_ver sb_latest svc_text script_ver
 
@@ -144,6 +195,7 @@ main_realtime_status_panel() {
     script_ver="${HY2_VLESS_VERSION:-dev}"
     sb_ver=$(main_status_singbox_version)
     sb_latest=$(main_status_latest_singbox_version)
+    local landing_info=$(main_status_landing_info)
 
     if is_svc_active sing-box; then
         svc_text="${LIGHT_GREEN}运行中${PLAIN}"
@@ -169,6 +221,7 @@ main_realtime_status_panel() {
     echo -e " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
     echo -e " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
     echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
+    echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${landing_info}"
      red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     main_status_show_node_info
     echo ""
