@@ -990,8 +990,11 @@ config_modify_menu() {
 }
 
 detect_public_ipv6_addr() {
-    ip -o -6 addr show scope global 2>/dev/null \
-        | awk '$2 !~ /^(wgcf|warp|CloudflareWARP|tun)/ && $4 ~ /^[23]/ {split($4,a,"/"); print a[1]; exit}'
+    # 直接向内核路由表索要前往公共全球单播地址的真实源出口 IP (完美兼容标准 iproute2 与 BusyBox)
+    local route_gate=$(ip -6 route get 2001:4860:4860::8888 2>/dev/null)
+    if [[ -n "$route_gate" ]]; then
+        echo "$route_gate" | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}'
+    fi
 }
 
 detect_warp_ipv6_iface() {
