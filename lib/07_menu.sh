@@ -253,12 +253,17 @@ main_realtime_status_panel() {
     main_status_landing_ip > /tmp/hy2_landing_$$.tmp 2>/dev/null &
     PID4=$!
     
-    wait $PID1 $PID2 $PID3 $PID4
+    # 引入异步探针看门狗 (Watchdog)，最大容忍 3 秒，超时强行熔断防止菜单卡死
+    ( sleep 3; kill -9 $PID1 $PID2 $PID3 $PID4 2>/dev/null ) &
+    WATCHDOG_PID=$!
+    
+    wait $PID1 $PID2 $PID3 $PID4 2>/dev/null
+    kill -9 $WATCHDOG_PID 2>/dev/null
 
-    ipv4=$(cat /tmp/hy2_ipv4_$$.tmp 2>/dev/null)
-    ipv6=$(cat /tmp/hy2_ipv6_$$.tmp 2>/dev/null)
-    sb_latest=$(cat /tmp/hy2_sblatest_$$.tmp 2>/dev/null)
-    landing_ip=$(cat /tmp/hy2_landing_$$.tmp 2>/dev/null)
+    ipv4=$(cat /tmp/hy2_ipv4_$$.tmp 2>/dev/null); [[ -z "$ipv4" ]] && ipv4="检测超时 (网络黑洞)"
+    ipv6=$(cat /tmp/hy2_ipv6_$$.tmp 2>/dev/null); [[ -z "$ipv6" ]] && ipv6="检测超时 (网络黑洞)"
+    sb_latest=$(cat /tmp/hy2_sblatest_$$.tmp 2>/dev/null); [[ -z "$sb_latest" ]] && sb_latest="获取失败"
+    landing_ip=$(cat /tmp/hy2_landing_$$.tmp 2>/dev/null); [[ -z "$landing_ip" ]] && landing_ip="检测超时 (网络黑洞)"
     rm -f /tmp/hy2_ipv4_$$.tmp /tmp/hy2_ipv6_$$.tmp /tmp/hy2_sblatest_$$.tmp /tmp/hy2_landing_$$.tmp 2>/dev/null
     
     warp_iface=$(main_status_get_warp_iface)
