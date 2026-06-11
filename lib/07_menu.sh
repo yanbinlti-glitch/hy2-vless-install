@@ -253,12 +253,13 @@ main_realtime_status_panel() {
     main_status_landing_ip > /tmp/hy2_landing_$$.tmp 2>/dev/null &
     PID4=$!
     
-    # 引入异步探针看门狗 (Watchdog)，最大容忍 3 秒，超时强行熔断防止菜单卡死
-    ( sleep 3; kill -9 $PID1 $PID2 $PID3 $PID4 2>/dev/null ) &
+    # 引入隐形看门狗 (Stealth Watchdog)，防止 Alpine/BusyBox 强杀时打印 Killed 污染 UI
+    ( sleep 3; kill -9 $PID1 $PID2 $PID3 $PID4 >/dev/null 2>&1 ) >/dev/null 2>&1 &
     WATCHDOG_PID=$!
     
     wait $PID1 $PID2 $PID3 $PID4 2>/dev/null
-    kill -9 $WATCHDOG_PID 2>/dev/null
+    # 使用标准 SIGTERM 温柔终止，并彻底丢弃终端作业控制的报错回显
+    kill $WATCHDOG_PID >/dev/null 2>&1 || true
 
     ipv4=$(cat /tmp/hy2_ipv4_$$.tmp 2>/dev/null); [[ -z "$ipv4" ]] && ipv4="检测超时 (网络黑洞)"
     ipv6=$(cat /tmp/hy2_ipv6_$$.tmp 2>/dev/null); [[ -z "$ipv6" ]] && ipv6="检测超时 (网络黑洞)"
