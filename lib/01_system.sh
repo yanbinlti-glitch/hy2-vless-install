@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+
+# 物理地基校验：确保极限环境下目录结构绝对存在
+ensure_foundation() {
+    if [[ ! -d "/opt/hy2_tmp" ]]; then
+        mkdir -p "/opt/hy2_tmp" >/dev/null 2>&1
+        chmod 755 "/opt/hy2_tmp" >/dev/null 2>&1
+    fi
+    # 彻底清理可能导致解压失败的旧版僵尸文件
+    rm -rf /opt/hy2_tmp/sing-box* 2>/dev/null
+}
+
+ensure_foundation
 #  2. 基础系统判定与快捷命令覆写
 # =================================================================
 [[ $EUID -ne 0 ]] && red " [错误] 请在 root 用户下运行此脚本！" && exit 1

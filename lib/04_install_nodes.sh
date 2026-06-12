@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+
+# 物理地基校验：确保极限环境下目录结构绝对存在
+ensure_foundation() {
+    if [[ ! -d "/opt/hy2_tmp" ]]; then
+        mkdir -p "/opt/hy2_tmp" >/dev/null 2>&1
+        chmod 755 "/opt/hy2_tmp" >/dev/null 2>&1
+    fi
+    # 彻底清理可能导致解压失败的旧版僵尸文件
+    rm -rf /opt/hy2_tmp/sing-box* 2>/dev/null
+}
+
+ensure_foundation
 #  5. 安装交互核心流程
 # =================================================================
 inst_cert() {

@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+
+# 物理地基校验：确保极限环境下目录结构绝对存在
+ensure_foundation() {
+    if [[ ! -d "/opt/hy2_tmp" ]]; then
+        mkdir -p "/opt/hy2_tmp" >/dev/null 2>&1
+        chmod 755 "/opt/hy2_tmp" >/dev/null 2>&1
+    fi
+    # 彻底清理可能导致解压失败的旧版僵尸文件
+    rm -rf /opt/hy2_tmp/sing-box* 2>/dev/null
+}
+
+ensure_foundation
 HY2_REPO_OWNER="${HY2_REPO_OWNER:-yanbinlti-glitch}"
 HY2_REPO_NAME="${HY2_REPO_NAME:-hy2-vless-install}"
 HY2_REPO_BRANCH="${HY2_REPO_BRANCH:-main}"
