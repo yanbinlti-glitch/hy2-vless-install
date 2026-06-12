@@ -253,7 +253,7 @@ config_outbound() {
                 jq --slurpfile ob /tmp/outbound_block.json '
                   del(.outbounds[] | select(.tag=="proxy")) |
                   del(.route.rules[] | select(.outbound=="proxy")) |
-              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443 and .action=="block")) |
+              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
                   .outbounds += $ob |
                   .route.rules = [{"network": "udp", "port": 443, "action": "route", "outbound": "block"}, {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
@@ -261,7 +261,7 @@ config_outbound() {
                 jq --slurpfile ob /tmp/outbound_block.json '
                   del(.outbounds[] | select(.tag=="proxy")) |
                   del(.route.rules[] | select(.outbound=="proxy")) |
-              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443 and .action=="block")) |
+              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
                   .outbounds += $ob |
                   .route.rules = [{"protocol": "dns", "action": "route", "outbound": "direct"}, {"port": 53, "action": "route", "outbound": "direct"}, {"network": "udp", "port": 443, "action": "route", "outbound": "block"}] + .route.rules + [{"action": "route", "outbound": "proxy"}]
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
@@ -283,12 +283,15 @@ config_outbound() {
             ;;
         3)
             yellow "  正在清除中转路由配置..."
-            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443 and .action=="block"))\' /etc/sing-box/config.json > /tmp/sb_out.json
+            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))\' /etc/sing-box/config.json > /tmp/sb_out.json
             if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
             
-            restart_singbox_checked
-            sleep 1
-            green "  [✔] 重启成功！已安全退回服务器本机 IP 直连输出模式。"
+            if restart_singbox_checked; then
+                sleep 1
+                green "  [✔] 重启成功！已安全退回服务器本机 IP 直连输出模式。"
+            else
+                red "  [✘] 恢复失败：配置文件校验未通过，已强行中止重启以防断网！"
+            fi
             ;;
         0) return ;;
         *) red "  输入无效"; sleep 1; return ;;
