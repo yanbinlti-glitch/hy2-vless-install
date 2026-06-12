@@ -1161,6 +1161,8 @@ install_or_repair_warp_ipv6_iface() {
         yum install -y curl jq wireguard-tools iproute ca-certificates && pkg_ok=1
     elif command -v apk >/dev/null 2>&1; then
         apk add --no-cache curl jq wireguard-tools iproute2 ca-certificates && pkg_ok=1
+    rc-update add crond default >/dev/null 2>&1 || true
+    rc-service crond start >/dev/null 2>&1 || true
     else
         red " [错误] 未识别的软件包管理器，请手动安装 curl jq wireguard-tools iproute2。"
         rm -rf "$tmp_dir"
