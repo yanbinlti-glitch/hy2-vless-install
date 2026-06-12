@@ -1270,6 +1270,11 @@ install_or_repair_warp_ipv6_iface() {
     # 强制替换为 CF 官方高可用 IP，解决 DNS 污染或无法握手的问题
     sed -i 's/engage.cloudflareclient.com/162.159.192.1/g' "$work_dir/${iface}.conf"
 
+    # 强制注入 NAT 环境 UDP 心跳保活机制，防止断流
+    if ! grep -q "PersistentKeepalive" "$work_dir/${iface}.conf"; then
+        sed -i '/^Endpoint/a PersistentKeepalive = 15' "$work_dir/${iface}.conf"
+    fi
+
     # 避免 wg-quick 自动接管系统默认路由
     if ! grep -q '^Table *= *off' "$work_dir/${iface}.conf"; then
         sed -i '/^\[Interface\]/a Table = off' "$work_dir/${iface}.conf"
