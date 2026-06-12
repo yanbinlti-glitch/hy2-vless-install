@@ -267,7 +267,7 @@ config_outbound() {
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
             fi
 
-            if [ -s /tmp/sb_out.json ]; then mv /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
+            if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[致命错误] jq 结构化写入失败，已强行中止流程！\033[0m"; sleep 2; return; fi
             
             green "  新落地代理配置写入完毕！"
             if restart_singbox_checked; then
@@ -283,8 +283,8 @@ config_outbound() {
             ;;
         3)
             yellow "  正在清除中转路由配置..."
-            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))\' /etc/sing-box/config.json > /tmp/sb_out.json
-            if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
+            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))' /etc/sing-box/config.json > /tmp/sb_out.json
+            if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[致命错误] jq 结构化写入失败，已强行中止流程！\033[0m"; sleep 2; return; fi
             
             if restart_singbox_checked; then
                 sleep 1
