@@ -224,6 +224,10 @@ config_outbound() {
             
             echo -en " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
             read proxy_port || exit 1
+            if [[ ! "$proxy_port" =~ ^[0-9]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
+                red "  [错误] 端口格式无效！"
+                sleep 2; return
+            fi
             
             echo -en " ${LIGHT_YELLOW} ▶ 用户名 (留空为无鉴权): ${PLAIN}"
             read proxy_user || proxy_user=""
@@ -249,6 +253,7 @@ config_outbound() {
                 jq --slurpfile ob /tmp/outbound_block.json '
                   del(.outbounds[] | select(.tag=="proxy")) |
                   del(.route.rules[] | select(.outbound=="proxy")) |
+              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) |
                   .outbounds += $ob |
                   .route.rules = [{"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
@@ -256,8 +261,9 @@ config_outbound() {
                 jq --slurpfile ob /tmp/outbound_block.json '
                   del(.outbounds[] | select(.tag=="proxy")) |
                   del(.route.rules[] | select(.outbound=="proxy")) |
+              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) |
                   .outbounds += $ob |
-                  .route.rules = .route.rules + [{"action": "route", "outbound": "proxy"}]
+                  .route.rules = [{"protocol": "dns", "action": "route", "outbound": "direct"}] + .route.rules + [{"action": "route", "outbound": "proxy"}]
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
             fi
 
@@ -274,7 +280,7 @@ config_outbound() {
             ;;
         3)
             yellow "  正在清除中转路由配置..."
-            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy"))' /etc/sing-box/config.json > /tmp/sb_out.json
+            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct"))' /etc/sing-box/config.json > /tmp/sb_out.json
             if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
             
             restart_singbox_checked

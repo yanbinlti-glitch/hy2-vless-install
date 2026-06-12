@@ -173,10 +173,14 @@ main_status_landing_info() {
             proto_prefix="http"
             [[ "$p_tls" == "true" ]] && proto_prefix="https"
         fi
+        local safe_server="$p_server"
+        [[ "$safe_server" =~ ":" ]] && safe_server="[$safe_server]"
+        local safe_user=$(jq -nr --arg v "$p_user" '$v|@uri' 2>/dev/null || echo "$p_user")
+        local safe_pass=$(jq -nr --arg v "$p_pass" '$v|@uri' 2>/dev/null || echo "$p_pass")
         if [[ -n "$p_user" ]]; then
-            curl_proxy="-x ${proto_prefix}://${p_user}:${p_pass}@${p_server}:${p_port}"
+            curl_proxy="-x ${proto_prefix}://${safe_user}:${safe_pass}@${safe_server}:${p_port}"
         else
-            curl_proxy="-x ${proto_prefix}://${p_server}:${p_port}"
+            curl_proxy="-x ${proto_prefix}://${safe_server}:${p_port}"
         fi
         local geo=$(curl -fsSLk -m 4 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
@@ -225,10 +229,14 @@ main_status_landing_ip() {
             proto_prefix="http"
             [[ "$p_tls" == "true" ]] && proto_prefix="https"
         fi
+        local safe_server="$p_server"
+        [[ "$safe_server" =~ ":" ]] && safe_server="[$safe_server]"
+        local safe_user=$(jq -nr --arg v "$p_user" '$v|@uri' 2>/dev/null || echo "$p_user")
+        local safe_pass=$(jq -nr --arg v "$p_pass" '$v|@uri' 2>/dev/null || echo "$p_pass")
         if [[ -n "$p_user" ]]; then
-            curl_proxy="-x ${proto_prefix}://${p_user}:${p_pass}@${p_server}:${p_port}"
+            curl_proxy="-x ${proto_prefix}://${safe_user}:${safe_pass}@${safe_server}:${p_port}"
         else
-            curl_proxy="-x ${proto_prefix}://${p_server}:${p_port}"
+            curl_proxy="-x ${proto_prefix}://${safe_server}:${p_port}"
         fi
         
         local geo=$(curl -fsSLk -m 4 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
