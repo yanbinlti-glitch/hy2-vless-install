@@ -303,6 +303,7 @@ self_update() {
 
     cat > /usr/bin/666 <<EOF_WRAPPER
 #!/usr/bin/env bash
+cd "$install_dir" || exit 1
 exec bash "$install_dir/install.sh" "\$@"
 EOF_WRAPPER
 

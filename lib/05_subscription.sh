@@ -207,6 +207,8 @@ EOF
 server {
     listen $sub_port;
     server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
     $listen_ipv6
     
     root $web_dir;

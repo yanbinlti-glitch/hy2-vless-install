@@ -180,6 +180,12 @@ check_env() {
         if ! command -v logrotate >/dev/null 2>&1; then
             $PKG_INSTALL logrotate >/dev/null 2>&1 || true
         fi
+
+        # 强制唤醒 Alpine 定时任务守护进程，防止 logrotate 变植物人
+        if [[ $SYSTEM == "Alpine" ]]; then
+            rc-update add crond default >/dev/null 2>&1 || true
+            rc-service crond start >/dev/null 2>&1 || true
+        fi
         green "  [✔] 所有前置依赖补全完成，二维码组件 qrencode 已纳入安装。"
     else
         echo ""
