@@ -360,7 +360,7 @@ ensure_singbox_core() {
         *) red " [致命错误] Sing-box 暂不支持您的 CPU 架构: $arch！"; return 1 ;;
     esac
 
-    local sb_release_json="/tmp/sing-box-release.json"
+    local sb_release_json="/opt/hy2_tmp/sing-box-release.json"
     local sb_version=""
     local sb_asset=""
     local dl_url=""
@@ -390,20 +390,20 @@ ensure_singbox_core() {
     [[ -z "$dl_url" || "$dl_url" == "null" ]] && dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/${sb_asset}"
 
     yellow "  目标版本: $sb_version ($sb_arch)，下载中..."
-    rm -rf /tmp/sing-box*
+    rm -rf /opt/hy2_tmp/sing-box*
 
-    if ! wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "$dl_url"; then
-        wget --timeout=15 --tries=3 -O /tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
+    if ! wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "$dl_url"; then
+        wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
     fi
 
-    if [[ ! -s /tmp/sing-box.tar.gz ]]; then
+    if [[ ! -s /opt/hy2_tmp/sing-box.tar.gz ]]; then
         red " [致命错误] Sing-box 核心下载失败，请检查网络。"
         return 1
     fi
 
     if [[ "$expected_digest" == sha256:* ]]; then
         expected_hash="${expected_digest#sha256:}"
-        actual_hash="$(sha256sum /tmp/sing-box.tar.gz | awk '{print $1}')"
+        actual_hash="$(sha256sum /opt/hy2_tmp/sing-box.tar.gz | awk '{print $1}')"
 
         if [[ "$expected_hash" == "$actual_hash" ]]; then
             green "  Sing-box 核心 sha256 校验通过。"
@@ -411,30 +411,30 @@ ensure_singbox_core() {
             red " [致命错误] Sing-box 核心 sha256 校验失败！"
             red "  期望: $expected_hash"
             red "  实际: $actual_hash"
-            rm -rf /tmp/sing-box*
+            rm -rf /opt/hy2_tmp/sing-box*
             return 1
         fi
     else
         if [[ "${HY2_VLESS_REQUIRE_SB_CHECKSUM:-0}" == "1" ]]; then
             red " [致命错误] HY2_VLESS_REQUIRE_SB_CHECKSUM=1，但未获取到 Sing-box 官方 digest。"
-            rm -rf /tmp/sing-box*
+            rm -rf /opt/hy2_tmp/sing-box*
             return 1
         fi
         yellow "  未获取到 Sing-box 官方 digest，跳过 sha256 校验。"
     fi
 
-    tar -xzf /tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
+    tar -xzf /opt/hy2_tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
     local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}" | head -n 1)
     if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
         mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
         chmod +x /usr/local/bin/sing-box
         green "  [✔] Sing-box ($sb_version | $sb_arch) 核心已恢复。"
-        rm -rf /tmp/sing-box*
+        rm -rf /opt/hy2_tmp/sing-box*
         return 0
     fi
 
     red " [致命错误] Sing-box 核心解压后未找到二进制文件。"
-    rm -rf /tmp/sing-box*
+    rm -rf /opt/hy2_tmp/sing-box*
     return 1
 }
 
@@ -450,7 +450,7 @@ check_singbox_config() {
     normalize_singbox_config
     if [[ -x /usr/local/bin/sing-box && -f /etc/sing-box/config.json ]]; then
         yellow "  正在执行 sing-box 配置校验，完整输出如下："
-        /usr/local/bin/sing-box check -c /etc/sing-box/config.json 2>&1 | tee /tmp/sing-box-check.log
+        /usr/local/bin/sing-box check -c /etc/sing-box/config.json 2>&1 | tee /opt/hy2_tmp/sing-box-check.log
         local rc=${PIPESTATUS[0]}
         if [[ $rc -ne 0 ]]; then
             red "  [致命错误] Sing-box 配置校验失败，服务未重启。"
