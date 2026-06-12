@@ -19,7 +19,7 @@ case $(echo "$SYS" | tr '[:upper:]' '[:lower:]') in
     alpine)
         SYSTEM="Alpine"
         PKG_UPDATE="apk update"
-        PKG_INSTALL="apk add"
+        PKG_INSTALL="apk add --no-cache"
         ;;
     debian)
         SYSTEM="Debian"
@@ -48,13 +48,11 @@ esac
 
 PUBLIC_IP=""
 valid_ip_literal() {
-    python3 - "$1" <<'PYIP' >/dev/null 2>&1
-import ipaddress, sys
-try:
-    ipaddress.ip_address(sys.argv[1].strip())
-except Exception:
-    sys.exit(1)
-PYIP
+    local ip="$1"
+    if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || [[ "$ip" =~ ^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}$ ]]; then
+        return 0
+    fi
+    return 1
 }
 
 realip() {

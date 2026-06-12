@@ -43,7 +43,7 @@ generate_client_configs() {
     # ================= 聚合: Hysteria 2 =================
     if [[ $has_hy2 -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/hy2_name.txt 2>/dev/null || echo "Hy2_Node")
-        local safe_node_name=$(NAME="$node_name" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('NAME', '')))")
+        local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json)
         local hop_ports=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
         [[ ! "$hop_ports" =~ ^[0-9]+-[0-9]+$ ]] && hop_ports=""
@@ -57,7 +57,7 @@ generate_client_configs() {
         local cert_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
         local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
 
-        local s_pwd=$(PWD="$pwd" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('PWD', '')))")
+        local s_pwd=$(jq -nr --arg v "$pwd" '$v|@uri')
         local url="hysteria2://$s_pwd@$uri_ip:$hy2_client_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$hop_ports" ]] && url="${url}&mport=${hop_ports}"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
@@ -100,7 +100,7 @@ generate_client_configs() {
     # ================= 聚合: VLESS =================
     if [[ $has_vless -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/vless_name.txt 2>/dev/null || echo "Vless_Node")
-        local safe_node_name=$(NAME="$node_name" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ.get('NAME', '')))")
+        local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .listen_port' /etc/sing-box/config.json)
         local uuid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .users[0].uuid' /etc/sing-box/config.json)
         local sni=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config.json 2>/dev/null)
