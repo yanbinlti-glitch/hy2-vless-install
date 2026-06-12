@@ -255,7 +255,7 @@ config_outbound() {
                   del(.route.rules[] | select(.outbound=="proxy")) |
               del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443 and .action=="block")) |
                   .outbounds += $ob |
-                  .route.rules = [{"network": "udp", "port": 443, "action": "block"}, {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
+                  .route.rules = [{"network": "udp", "port": 443, "action": "route", "outbound": "block"}, {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
             else
                 jq --slurpfile ob /tmp/outbound_block.json '
@@ -263,19 +263,22 @@ config_outbound() {
                   del(.route.rules[] | select(.outbound=="proxy")) |
               del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443 and .action=="block")) |
                   .outbounds += $ob |
-                  .route.rules = [{"protocol": "dns", "action": "route", "outbound": "direct"}, {"port": 53, "action": "route", "outbound": "direct"}, {"network": "udp", "port": 443, "action": "block"}] + .route.rules + [{"action": "route", "outbound": "proxy"}]
+                  .route.rules = [{"protocol": "dns", "action": "route", "outbound": "direct"}, {"port": 53, "action": "route", "outbound": "direct"}, {"network": "udp", "port": 443, "action": "route", "outbound": "block"}] + .route.rules + [{"action": "route", "outbound": "proxy"}]
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
             fi
 
             if [ -s /tmp/sb_out.json ]; then mv /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[错误] jq 写入失败，取消覆写保护原配置\033[0m"; fi
             
             green "  新落地代理配置写入完毕！"
-            restart_singbox_checked
-            sleep 1
-            if is_svc_active sing-box; then
-                green "  [✔] 重启成功！落地规则已全面生效。"
+            if restart_singbox_checked; then
+                sleep 1
+                if is_svc_active sing-box; then
+                    green "  [✔] 重启成功！落地规则已全面生效。"
+                else
+                    red "  [✘] 致命错误：新配置应用后服务无法启动！"
+                fi
             else
-                red "  [✘] 致命错误：新配置应用后服务无法启动！"
+                red "  [✘] 拦截生效：发现配置错误，已强行中止重启，保持旧配置以防断网！"
             fi
             ;;
         3)
