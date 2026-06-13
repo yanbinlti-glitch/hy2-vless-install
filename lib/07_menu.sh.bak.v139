@@ -330,16 +330,10 @@ main_realtime_status_panel() {
         out_mode="智能分流"
     fi
 
-    # 动态接管并清洗变量
-    local proxy_ip_str="${proxy_ip_str}"
+    # 动态抓取并发探测生成的 IP 缓存
+    local proxy_ip_str="${landing_info}"
     [[ -z "$proxy_ip_str" ]] && proxy_ip_str="[未开启或获取超时]"
-
-    # 变量重绑与流式网络探针兜底，双重保险确保 100% 捕获真实公网 IP
-    local disp_ipv4="${PLAIN}"
-    if [[ -z "$disp_ipv4" || "$disp_ipv4" == "本机IP" ]]; then
-        disp_ipv4=$(curl -fsS4m2 https://api.ipify.org || curl -fsS4m2 https://ifconfig.me/ip || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
-    fi
-    [[ -z "$disp_ipv4" ]] && disp_ipv4="83.229.122.74"
+    local disp_ipv4="${PLAIN:-本机IP}"
 
     if [[ "$out_mode" == "指定节点" ]]; then
         if [[ "$target_inbound" == "hy2-in" ]]; then
