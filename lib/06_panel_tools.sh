@@ -39,7 +39,7 @@ remove_node() {
     echo ""
     echo -e "  ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read rm_choice || return
 
     case $rm_choice in
@@ -196,7 +196,7 @@ config_outbound() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -512,7 +512,7 @@ singbox_switch() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
         1 ) restart_singbox_checked && green "  Sing-box 核心已启动/重载！"; sleep 2 ;;
@@ -1076,6 +1076,74 @@ modify_node_name() {
     read temp
 }
 
+
+set_node_expiration() {
+    clear
+    print_line
+    green " 设置 / 延长节点有效期 (定时停用看门狗) "
+    print_line
+    echo ""
+    
+    local exp_file="/etc/sing-box/expiration.txt"
+    local current_exp=$(cat "$exp_file" 2>/dev/null || echo "0")
+    local now=$(date +%s)
+    
+    if [[ "$current_exp" -gt "$now" ]]; then
+        local diff=$((current_exp - now))
+        local days=$((diff / 86400))
+        yellow " 当前节点处于受控保护中，剩余有效期: $days 天"
+    else
+        yellow " 当前节点处于 [永久有效] 或 [已到期停用] 状态。"
+    fi
+    
+    echo ""
+    echo -e "   ${LIGHT_GREEN}[1]${PLAIN} 设定/续期 有效期天数"
+    echo -e "   ${LIGHT_GREEN}[2]${PLAIN} 解除时间限制 (变回永久有效)"
+    echo -e "   ${LIGHT_GREEN}[3]${PLAIN} 立即模拟到期触发 (开发排障测试)"
+    echo -e "   ${LIGHT_GREEN}[0]${PLAIN} 返回上级菜单"
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 请选择操作 [0-3]: ${PLAIN}"
+    read exp_choice
+    
+    case $exp_choice in
+        1)
+            echo -en "\n ${LIGHT_YELLOW} ▶ 请输入有效的限时天数 (正整数，如 30): ${PLAIN}"
+            read exp_days
+            if [[ ! "$exp_days" =~ ^[0-9]+$ ]] || [ "$exp_days" -lt 1 ]; then
+                red " [错误] 输入格式无效！必须是大于0的正整数。"
+                sleep 2; return
+            fi
+            
+            local new_exp=$(( now + exp_days * 86400 ))
+            printf "%s\n" "$new_exp" > "$exp_file"
+            
+            # 往系统 crontab 挂载每小时执行的隐形断网看门狗守护进程
+            (crontab -l 2>/dev/null | grep -v "expiration.txt"; echo "0 * * * * if [ \$(date +%s) -ge \$(cat /etc/sing-box/expiration.txt 2>/dev/null || echo 9999999999) ]; then rc-service sing-box stop >/dev/null 2>&1 || systemctl stop sing-box >/dev/null 2>&1; fi") | crontab -
+            
+            green " [✔] 成功！节点有效期已成功设定为 $exp_days 天。后盾看门狗守护已同步挂载！"
+            ;;
+        2)
+            printf "0\n" > "$exp_file"
+            # 清理 crontab 垃圾残骸
+            crontab -l 2>/dev/null | grep -v "expiration.txt" | crontab -
+            green " [✔] 成功！限制已完全解除，节点恢复为 [永久有效] 状态。"
+            ;;
+        3)
+            # 模拟到期：直接把时间戳写成 1000 
+            printf "1000\n" > "$exp_file"
+            yellow " 正在触发看门狗强制阻断..."
+            rc-service sing-box stop >/dev/null 2>&1 || systemctl stop sing-box >/dev/null 2>&1
+            red " [✔] 模拟断网成功！检测到时间回溯，Sing-box 核心已被后台物理击杀！"
+            ;;
+        *)
+            return
+            ;;
+    esac
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回...${PLAIN}"
+    read temp
+}
+
 config_modify_menu() {
     while true; do
         clear
@@ -1091,7 +1159,7 @@ config_modify_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
@@ -1492,7 +1560,7 @@ warp_ipv6_route_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
         read warp_ipv6_choice || return
 
         case "$warp_ipv6_choice" in
