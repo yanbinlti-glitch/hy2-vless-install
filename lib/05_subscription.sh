@@ -55,6 +55,7 @@ generate_client_configs() {
     # ================= 聚合: Hysteria 2 =================
     if [[ $has_hy2 -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/hy2_name.txt 2>/dev/null || echo "Hy2_Node")
+        local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json)
         local hop_ports=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
@@ -69,6 +70,7 @@ generate_client_configs() {
         local cert_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
         local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
 
+        local yaml_pwd="${pwd//\'/\'\'}"
         local s_pwd=$(jq -nr --arg v "$pwd" '$v|@uri')
         local url="hysteria2://$s_pwd@$uri_ip:$hy2_client_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$hop_ports" ]] && url="${url}&mport=${hop_ports}"
@@ -80,13 +82,13 @@ generate_client_configs() {
 "
 
         proxy_yaml="${proxy_yaml}
-  - name: '${node_name}'
+  - name: '${yaml_node_name}'
     type: hysteria2
     udp: true
     server: \"$yaml_json_ip\"
     port: $bind_port
     $(if [[ -n "$hop_ports" ]]; then printf 'ports: "%s"' "$hop_ports"; fi)
-    password: '${pwd}'
+    password: '${yaml_pwd}'
     sni: \"$sni\"
     skip-cert-verify: true
     alpn:
@@ -97,7 +99,7 @@ generate_client_configs() {
         
         # 修复 Bug 2：防止 YAML 数组解析报错
         proxy_names="${proxy_names}
-      - '${node_name}'"
+      - '${yaml_node_name}'"
         
         local sb_hy2_port_json="\"server_port\":${bind_port}"
         [[ -n "$hop_ports" ]] && sb_hy2_port_json="\"server_port\":${bind_port},\"server_ports\":[\"${hop_ports}\"]"
@@ -112,6 +114,7 @@ generate_client_configs() {
     # ================= 聚合: VLESS =================
     if [[ $has_vless -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/vless_name.txt 2>/dev/null || echo "Vless_Node")
+        local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .listen_port' /etc/sing-box/config.json)
         local uuid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .users[0].uuid' /etc/sing-box/config.json)
@@ -126,7 +129,7 @@ generate_client_configs() {
 "
 
         proxy_yaml="${proxy_yaml}
-  - name: '${node_name}'
+  - name: '${yaml_node_name}'
     type: vless
     server: \"$yaml_json_ip\"
     port: $bind_port
@@ -143,7 +146,7 @@ generate_client_configs() {
       short-id: \"$sid\""
         
         proxy_names="${proxy_names}
-      - '${node_name}'"
+      - '${yaml_node_name}'"
         
         local sb_vless_json="{\"type\":\"vless\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"uuid\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"packet_encoding\":\"xudp\",\"tcp_fast_open\":true,\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"utls\":{\"enabled\":true,\"fingerprint\":\"chrome\"},\"reality\":{\"enabled\":true,\"public_key\":\"${pub}\",\"short_id\":\"${sid}\"}}}"
         sb_outbounds="${sb_outbounds}${sb_vless_json},"
