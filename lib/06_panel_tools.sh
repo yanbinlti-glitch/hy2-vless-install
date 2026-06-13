@@ -181,7 +181,8 @@ config_outbound() {
         local display_type="$current_outbound"
         [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="https"
         
-        local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "智能分流")
+        local is_global="智能分流"
+        if jq -e '.route.rules[] | select(.outbound=="proxy" and .inbound != null)' /etc/sing-box/config.json >/dev/null 2>&1; then is_global="指定节点"; elif jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config.json >/dev/null 2>&1; then is_global="全局"; fi
         yellow "  当前状态: [已开启] 落地代理模式 (类型: ${display_type^^} | 目标: $out_server | 模式: $is_global)"
     else
         green "  当前状态: [未开启] 本机 IP 直连输出"
@@ -190,7 +191,8 @@ config_outbound() {
     
     echo -e "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 智能分流代理 (仅 Netflix/ChatGPT 等流媒体走中转)${PLAIN}"
     echo -e "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走落地中转)${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}配置 指定节点中转 (仅让特定节点走落地中转)${PLAIN}"
+    echo -e "    ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
@@ -198,7 +200,7 @@ config_outbound() {
     read out_choice || exit 1
 
     case $out_choice in
-        1|2)
+        1|2|3)
             echo ""
             yellow "  ▶ 请选择落地代理协议类型:"
             echo -e "    ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
@@ -235,6 +237,27 @@ config_outbound() {
             echo -en " ${LIGHT_YELLOW} ▶ 密码 (留空为无鉴权): ${PLAIN}"
             read proxy_pass || proxy_pass=""
 
+            local target_inbound=""
+            if [[ "$out_choice" == "3" ]]; then
+                check_installed_nodes 2>/dev/null || { [[ -f /etc/sing-box/hy2_name.txt ]] && has_hy2=1 || has_hy2=0; [[ -f /etc/sing-box/vless_name.txt ]] && has_vless=1 || has_vless=0; }
+                if [[ ${has_hy2:-0} -eq 1 && ${has_vless:-0} -eq 1 ]]; then
+                    echo ""
+                    yellow "  ▶ 请选择要中转的节点:"
+                    echo -e "    ${LIGHT_GREEN}[1]${PLAIN} 仅中转 Hysteria 2"
+                    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} 仅中转 VLESS"
+                    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2]: ${PLAIN}"
+                    read inbound_choice
+                    if [[ "$inbound_choice" == "1" ]]; then target_inbound="hy2-in"; else target_inbound="vless-in"; fi
+                elif [[ ${has_hy2:-0} -eq 1 ]]; then
+                    target_inbound="hy2-in"
+                elif [[ ${has_vless:-0} -eq 1 ]]; then
+                    target_inbound="vless-in"
+                else
+                    red "  [错误] 未检测到任何节点入站！"
+                    sleep 2; return
+                fi
+            fi
+
             echo ""
             yellow "  正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
             
@@ -256,6 +279,14 @@ config_outbound() {
               del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
                   .outbounds += $ob |
                   .route.rules = [{"network": "udp", "port": 443, "action": "route", "outbound": "block"}, {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
+                ' /etc/sing-box/config.json > /tmp/sb_out.json
+            elif [[ "$out_choice" == "3" ]]; then
+                jq --slurpfile ob /tmp/outbound_block.json --arg inb "$target_inbound" '
+                  del(.outbounds[] | select(.tag=="proxy")) |
+                  del(.route.rules[] | select(.outbound=="proxy")) |
+              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
+                  .outbounds += $ob |
+                  .route.rules = [{"inbound": [$inb], "action": "route", "outbound": "proxy"}] + .route.rules
                 ' /etc/sing-box/config.json > /tmp/sb_out.json
             else
                 jq --slurpfile ob /tmp/outbound_block.json '
@@ -281,7 +312,7 @@ config_outbound() {
                 red "  [✘] 拦截生效：发现配置错误，已强行中止重启，保持旧配置以防断网！"
             fi
             ;;
-        3)
+        4)
             yellow "  正在清除中转路由配置..."
             jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))' /etc/sing-box/config.json > /tmp/sb_out.json
             if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[致命错误] jq 结构化写入失败，已强行中止流程！\033[0m"; sleep 2; return; fi
