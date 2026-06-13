@@ -356,6 +356,25 @@ main_realtime_status_panel() {
             echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_PURPLE}${landing_info}${suffix}${PLAIN}"
         fi
     fi
+    # --- 租期看门狗倒计时高精渲染引擎 ---
+    local exp_time=$(cat /etc/sing-box/expiration.txt 2>/dev/null || echo "0")
+    if [[ "$exp_time" -gt 0 ]]; then
+        local now_ts=$(date +%s)
+        if [[ "$now_ts" -ge "$exp_time" ]]; then
+            echo -e " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_RED}已过期 (后台看门狗已强行断网停用)${PLAIN}"
+            if is_svc_active sing-box; then
+                rc-service sing-box stop >/dev/null 2>&1 || systemctl stop sing-box >/dev/null 2>&1
+            fi
+        else
+            local diff_ts=$((exp_time - now_ts))
+            local r_days=$((diff_ts / 86400))
+            local r_hours=$(( (diff_ts % 86400) / 3600 ))
+            local r_mins=$(( (diff_ts % 3600) / 60 ))
+            echo -e " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}剩余 ${r_days} 天 ${r_hours} 小时 ${r_mins} 分钟 (到期自动断网)${PLAIN}"
+        fi
+    else
+        echo -e " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}永久有效 (未设置时间限制)${PLAIN}"
+    fi
 
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     main_status_show_node_info
