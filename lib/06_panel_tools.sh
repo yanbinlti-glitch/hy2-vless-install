@@ -39,7 +39,7 @@ remove_node() {
     echo ""
     echo -e "  ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
     read rm_choice || return
 
     case $rm_choice in
@@ -194,7 +194,7 @@ config_outbound() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -481,7 +481,7 @@ singbox_switch() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
         1 ) restart_singbox_checked && green "  Sing-box 核心已启动/重载！"; sleep 2 ;;
@@ -985,6 +985,66 @@ enable_hy2_port_hopping() {
     read temp
 }
 
+
+modify_node_name() {
+    clear
+    print_line
+    green " 修改 节点名称 (展示在客户端中的名字) "
+    print_line
+    echo ""
+    check_installed_nodes
+    if [[ $has_hy2 -eq 0 && $has_vless -eq 0 ]]; then
+        red " 未检测到任何已部署的节点！"
+        sleep 2
+        return
+    fi
+
+    local target_node="0"
+    if [[ $has_hy2 -eq 1 && $has_vless -eq 1 ]]; then
+        yellow " 检测到您同时部署了 Hy2 和 VLESS，请选择要修改的节点："
+        echo -e "   ${LIGHT_GREEN}[1]${PLAIN} Hysteria 2"
+        echo -e "   ${LIGHT_GREEN}[2]${PLAIN} VLESS"
+        echo -en " ${LIGHT_YELLOW} ▶ 请选择 [1-2]: ${PLAIN}"
+        read target_node
+        [[ "$target_node" != "1" && "$target_node" != "2" ]] && { red " 输入无效"; sleep 1; return; }
+    elif [[ $has_hy2 -eq 1 ]]; then
+        target_node="1"
+    else
+        target_node="2"
+    fi
+
+    local current_name new_name file_path protocol
+    if [[ "$target_node" == "1" ]]; then
+        file_path="/etc/sing-box/hy2_name.txt"
+        current_name=$(cat "$file_path" 2>/dev/null || echo "Hy2_Node")
+        protocol="Hysteria 2"
+    else
+        file_path="/etc/sing-box/vless_name.txt"
+        current_name=$(cat "$file_path" 2>/dev/null || echo "Vless_Node")
+        protocol="VLESS"
+    fi
+
+    yellow " 当前 $protocol 节点名称: $current_name"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入新的节点名称 (支持英文、数字、中划线、下划线): ${PLAIN}"
+    read new_name || return
+    [[ -z "$new_name" ]] && return
+
+    # 严苛正则防线：防止输入奇奇怪怪的符号搞碎 YAML 语法
+    if [[ ! "$new_name" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+        red " [错误] 名称包含非法字符，为确保订阅兼容性，请使用英文、数字、中划线或下划线。"
+        sleep 2
+        return
+    fi
+
+    echo "$new_name" > "$file_path"
+    yellow " 正在重新装配底层订阅引擎..."
+    generate_client_configs
+    green " [✔] $protocol 节点名称已成功修改为: $new_name (订阅已同步刷新)"
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    read temp
+}
+
 config_modify_menu() {
     while true; do
         clear
@@ -996,10 +1056,11 @@ config_modify_menu() {
         echo -e " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 节点的自签名证书 / Reality 参数${PLAIN}"
         echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hy2 的自签名证书${PLAIN}"
         echo -e " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hy2 的跳跃端口${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}"
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-2]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
@@ -1007,6 +1068,7 @@ config_modify_menu() {
             2) modify_vless_self_signed_cert ;;
             3) modify_hy2_self_signed_cert ;;
             4) enable_hy2_port_hopping ;;
+            5) modify_node_name ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
@@ -1399,7 +1461,7 @@ warp_ipv6_route_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-5]: ${PLAIN}"
         read warp_ipv6_choice || return
 
         case "$warp_ipv6_choice" in
