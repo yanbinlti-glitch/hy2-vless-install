@@ -1056,18 +1056,18 @@ modify_node_name() {
     fi
 
     yellow " 当前 $protocol 节点名称: $current_name"
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入新的节点名称 (支持英文、数字、中划线、下划线): ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入新的节点名称 (全面支持中文、空格、括号等特殊符号): ${PLAIN}"
     read new_name || return
     [[ -z "$new_name" ]] && return
 
-    # 严苛正则防线：防止输入奇奇怪怪的符号搞碎 YAML 语法
-    if [[ ! "$new_name" =~ ^[A-Za-z0-9_.-]+$ ]]; then
-        red " [错误] 名称包含非法字符，为确保订阅兼容性，请使用英文、数字、中划线或下划线。"
+    # 动态宽松防线：得益于后端的强力转义引擎，此处全面放开字符限制
+    if [[ -z "${new_name// /}" ]]; then
+        red " [错误] 节点名称不能为空或纯空格！"
         sleep 2
         return
     fi
 
-    echo "$new_name" > "$file_path"
+    printf "%s\n" "$new_name" > "$file_path"
     yellow " 正在重新装配底层订阅引擎..."
     generate_client_configs
     green " [✔] $protocol 节点名称已成功修改为: $new_name (订阅已同步刷新)"
