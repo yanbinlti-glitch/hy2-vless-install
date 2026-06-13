@@ -331,11 +331,9 @@ main_realtime_status_panel() {
     fi
 
     # 动态抓取并发探测生成的 IP 缓存
-    local proxy_ip_str=$(cat /tmp/hy2_proxy*.tmp 2>/dev/null | head -n 1)
+    local proxy_ip_str="${landing_info}"
     [[ -z "$proxy_ip_str" ]] && proxy_ip_str="[未开启或获取超时]"
-
-    local disp_ipv4=$(cat /tmp/hy2_ipv4*.tmp 2>/dev/null | head -n 1)
-    [[ -z "$disp_ipv4" ]] && disp_ipv4="${PUBLIC_IP:-本机IP}"
+    local disp_ipv4="${PLAIN:-本机IP}"
 
     if [[ "$out_mode" == "指定节点" ]]; then
         if [[ "$target_inbound" == "hy2-in" ]]; then
