@@ -253,6 +253,7 @@ main_status_landing_ip() {
 }
 
 main_realtime_status_panel() {
+    trap 'rm -f /tmp/hy2_*_$$.tmp 2>/dev/null' RETURN
     local os_name kernel arch virt bbr ipv4 ipv6 warp_iface warp_ipv6 sb_ver sb_latest svc_text script_ver
 
     os_name=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
