@@ -451,6 +451,7 @@ ensure_singbox_core() {
         yellow "  未获取到 Sing-box 官方 digest，跳过 sha256 校验。"
     fi
 
+    rm -rf /tmp/sing-box-*-linux-* 2>/dev/null
     tar -xzf /opt/hy2_tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
     local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}" | head -n 1)
     if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
@@ -604,8 +605,10 @@ echo ""
     local keypair_json=$(/usr/local/bin/sing-box generate reality-keypair)
     local v_private_key=$(echo "$keypair_json" | awk '/PrivateKey/ {print $2}' | tr -d '"')
     local v_public_key=$(echo "$keypair_json" | awk '/PublicKey/ {print $2}' | tr -d '"')
-    local v_short_id=$(/usr/local/bin/sing-box generate rand --hex 8)
-    local v_uuid=$(/usr/local/bin/sing-box generate uuid)
+    local v_short_id=$(/usr/local/bin/sing-box generate rand --hex 8 2>/dev/null)
+    local v_uuid=$(/usr/local/bin/sing-box generate uuid 2>/dev/null)
+    [[ -z "$v_uuid" ]] && v_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "11223344-5566-7788-9900-aabbccddeeff")
+    [[ -z "$v_short_id" ]] && v_short_id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' | head -c 16 || echo "1122334455667788")
     
     echo "$v_public_key" > /etc/sing-box/reality_pub.txt
     
