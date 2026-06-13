@@ -317,7 +317,42 @@ main_realtime_status_panel() {
     echo -e " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
     echo -e " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
     echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
-    echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${landing_info}"
+
+    # --- 双节点状态智能展示 ---
+    local target_inbound=""
+    local out_mode="未开启"
+    if jq -e '.route.rules[] | select(.outbound=="proxy" and .inbound != null)' /etc/sing-box/config.json >/dev/null 2>&1; then
+        out_mode="指定节点"
+        target_inbound=$(jq -r '.route.rules[] | select(.outbound=="proxy" and .inbound != null) | .inbound[]' /etc/sing-box/config.json 2>/dev/null)
+    elif jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config.json >/dev/null 2>&1; then
+        out_mode="全局中转"
+    elif jq -e '.route.rules[] | select(.outbound=="proxy")' /etc/sing-box/config.json >/dev/null 2>&1; then
+        out_mode="智能分流"
+    fi
+
+    # 动态抓取并发探测生成的 IP 缓存
+    local proxy_ip_str=$(cat /tmp/hy2_proxy*.tmp 2>/dev/null | head -n 1)
+    [[ -z "$proxy_ip_str" ]] && proxy_ip_str="[未开启或获取超时]"
+
+    local disp_ipv4=$(cat /tmp/hy2_ipv4*.tmp 2>/dev/null | head -n 1)
+    [[ -z "$disp_ipv4" ]] && disp_ipv4="${PUBLIC_IP:-本机IP}"
+
+    if [[ "$out_mode" == "指定节点" ]]; then
+        if [[ "$target_inbound" == "hy2-in" ]]; then
+            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}${proxy_ip_str} (定向中转)${PLAIN}"
+            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}${disp_ipv4} (本机直连)${PLAIN}"
+        elif [[ "$target_inbound" == "vless-in" ]]; then
+            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}${disp_ipv4} (本机直连)${PLAIN}"
+            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}${proxy_ip_str} (定向中转)${PLAIN}"
+        fi
+    else
+        # 兼容原来的单行展示逻辑
+        local suffix=""
+        [[ "$out_mode" == "全局中转" ]] && suffix=" (全局强转)"
+        [[ "$out_mode" == "智能分流" ]] && suffix=" (流媒体分流)"
+        echo -e " ${LIGHT_GREEN}▶ 落地网络IP :${PLAIN} ${LIGHT_CYAN}${proxy_ip_str}${suffix}${PLAIN}"
+    fi
+            : # [Auto-Patched] echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${landing_info}"
      red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     main_status_show_node_info
     echo ""
