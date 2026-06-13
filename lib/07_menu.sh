@@ -264,7 +264,7 @@ main_realtime_status_panel() {
     virt=$(main_status_detect_virtualization)
     bbr=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")
 
-    # 异步并发执行耗时网络探测，极限压缩菜单加载时间
+    # 异步并发执行耗时网络探测
     main_status_get_public_ipv4 > /tmp/hy2_ipv4_$$.tmp 2>/dev/null &
     PID1=$!
     main_status_get_public_ipv6 > /tmp/hy2_ipv6_$$.tmp 2>/dev/null &
@@ -274,24 +274,21 @@ main_realtime_status_panel() {
     main_status_landing_ip > /tmp/hy2_landing_$$.tmp 2>/dev/null &
     PID4=$!
     
-    # 引入隐形看门狗 (Stealth Watchdog)，防止 Alpine/BusyBox 强杀时打印 Killed 污染 UI
     ( sleep 3; kill -9 $PID1 $PID2 $PID3 $PID4 >/dev/null 2>&1 ) >/dev/null 2>&1 &
     WATCHDOG_PID=$!
     
     wait $PID1 $PID2 $PID3 $PID4 2>/dev/null
-    # 使用标准 SIGTERM 温柔终止，并彻底丢弃终端作业控制的报错回显
     kill $WATCHDOG_PID >/dev/null 2>&1 || true
 
-    ipv4=$(cat /tmp/hy2_ipv4_$$.tmp 2>/dev/null); [[ -z "$ipv4" ]] && ipv4="检测超时 (网络黑洞)"
-    ipv6=$(cat /tmp/hy2_ipv6_$$.tmp 2>/dev/null); [[ -z "$ipv6" ]] && ipv6="检测超时 (网络黑洞)"
+    ipv4=$(cat /tmp/hy2_ipv4_$$.tmp 2>/dev/null)
+    ipv6=$(cat /tmp/hy2_ipv6_$$.tmp 2>/dev/null)
     sb_latest=$(cat /tmp/hy2_sblatest_$$.tmp 2>/dev/null); [[ -z "$sb_latest" ]] && sb_latest="获取失败"
-    landing_ip=$(cat /tmp/hy2_landing_$$.tmp 2>/dev/null); [[ -z "$landing_ip" ]] && landing_ip="检测超时 (网络黑洞)"
+    local landing_info=$(cat /tmp/hy2_landing_$$.tmp 2>/dev/null); [[ -z "$landing_info" ]] && landing_info="检测超时 (网络黑洞)"
     rm -f /tmp/hy2_ipv4_$$.tmp /tmp/hy2_ipv6_$$.tmp /tmp/hy2_sblatest_$$.tmp /tmp/hy2_landing_$$.tmp 2>/dev/null
     
     warp_iface=$(main_status_get_warp_iface)
     script_ver="${HY2_VLESS_VERSION:-dev}"
     sb_ver=$(main_status_singbox_version)
-    local landing_info=$(main_status_landing_info)
 
     if is_svc_active sing-box; then
         svc_text="${LIGHT_GREEN}运行中${PLAIN}"
@@ -299,8 +296,10 @@ main_realtime_status_panel() {
         svc_text="${LIGHT_RED}未运行 / 异常${PLAIN}"
     fi
 
-    [[ -z "$ipv4" ]] && ipv4="未检测到"
-    [[ -z "$ipv6" ]] && ipv6="无公网IPv6"
+    # 清洗并缓存真实 IPv4 以供直连显示
+    local clean_ipv4="${ipv4}"
+    [[ -z "$clean_ipv4" || "$clean_ipv4" == "检测超时"* ]] && ipv4="未检测到"
+    [[ -z "$ipv6" || "$ipv6" == "检测超时"* ]] && ipv6="无公网IPv6"
 
     if [[ -n "$warp_iface" ]]; then
         warp_ipv6=$(ip -6 addr show dev "$warp_iface" scope global 2>/dev/null | awk '/inet6/ {print $2; exit}' | cut -d/ -f1)
@@ -309,16 +308,7 @@ main_realtime_status_panel() {
         warp_iface="未检测到"
     fi
 
-    echo -e " ${LIGHT_CYAN}实时状态面板${PLAIN}"
-     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    echo -e " ${LIGHT_YELLOW}Sing-box内核:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新正式版:${PLAIN} ${sb_latest}    ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}"
-    echo -e " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel} "   
-    echo -e " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}     ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
-    echo -e " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
-    echo -e " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
-    echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
-
-    # --- 双节点状态智能展示 ---
+    # 动态探测中转模式
     local target_inbound=""
     local out_mode="未开启"
     if jq -e '.route.rules[] | select(.outbound=="proxy" and .inbound != null)' /etc/sing-box/config.json >/dev/null 2>&1; then
@@ -330,34 +320,44 @@ main_realtime_status_panel() {
         out_mode="智能分流"
     fi
 
-    # 动态接管并清洗变量
-    local proxy_ip_str="${proxy_ip_str}"
-    [[ -z "$proxy_ip_str" ]] && proxy_ip_str="[未开启或获取超时]"
+    echo -e " ${LIGHT_CYAN}实时状态面板${PLAIN}"
+    red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    echo -e " ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}    ${LIGHT_YELLOW}核心版本:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新官方版:${PLAIN} ${sb_latest}"
+    echo -e " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel} "   
+    echo -e " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}     ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
+    echo -e " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
+    echo -e " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
+    echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
 
-    # 变量重绑与流式网络探针兜底，双重保险确保 100% 捕获真实公网 IP
-    local disp_ipv4="${PLAIN}"
-    if [[ -z "$disp_ipv4" || "$disp_ipv4" == "本机IP" ]]; then
-        disp_ipv4=$(curl -fsS4m2 https://api.ipify.org || curl -fsS4m2 https://ifconfig.me/ip || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
+    # 直连 IP 终极高压补位系统
+    local disp_v4="${clean_ipv4}"
+    if [[ -z "$disp_v4" || "$disp_v4" == "检测超时"* ]]; then
+        disp_v4=$(curl -fsS4m2 https://api.ipify.org 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
+        [[ -z "$disp_v4" ]] && disp_v4="未知本机IP"
     fi
-    [[ -z "$disp_ipv4" ]] && disp_ipv4="83.229.122.74"
 
+    # 落地 IP 双轨重装渲染逻辑
     if [[ "$out_mode" == "指定节点" ]]; then
         if [[ "$target_inbound" == "hy2-in" ]]; then
-            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}${proxy_ip_str} (定向中转)${PLAIN}"
-            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}${disp_ipv4} (本机直连)${PLAIN}"
+            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
+            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
         elif [[ "$target_inbound" == "vless-in" ]]; then
-            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}${disp_ipv4} (本机直连)${PLAIN}"
-            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}${proxy_ip_str} (定向中转)${PLAIN}"
+            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
+            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
         fi
     else
-        # 兼容原来的单行展示逻辑
         local suffix=""
         [[ "$out_mode" == "全局中转" ]] && suffix=" (全局强转)"
-        [[ "$out_mode" == "智能分流" ]] && suffix=" (流媒体分流)"
-        echo -e " ${LIGHT_GREEN}▶ 落地网络IP :${PLAIN} ${LIGHT_CYAN}${proxy_ip_str}${suffix}${PLAIN}"
+        [[ "$out_mode" == "智能分流" ]] && suffix=" (流媒体智能分流)"
+        
+        if [[ "$out_mode" == "未开启" ]]; then
+            echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_CYAN}${landing_info}${PLAIN}"
+        else
+            echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_PURPLE}${landing_info}${suffix}${PLAIN}"
+        fi
     fi
-            : # [Auto-Patched] echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${landing_info}"
-     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+
+    red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     main_status_show_node_info
     echo ""
 }
