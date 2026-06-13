@@ -1168,6 +1168,7 @@ config_modify_menu() {
             3) modify_hy2_self_signed_cert ;;
             4) enable_hy2_port_hopping ;;
             5) modify_node_name ;;
+            6) set_node_expiration ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
