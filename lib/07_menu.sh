@@ -148,7 +148,7 @@ main_status_landing_info() {
     fi
     local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -z "$has_proxy" || "$has_proxy" == "null" ]]; then
-        local geo=$(curl -fsSLk -m 3 "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(curl -fsSLk -m 6 "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local country=$(echo "$geo" | jq -r '.country')
@@ -182,7 +182,7 @@ main_status_landing_info() {
         else
             curl_proxy="-x ${proto_prefix}://${safe_server}:${p_port}"
         fi
-        local geo=$(curl -fsSLk -m 4 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(curl -fsSLk -m 6 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local ip=$(echo "$geo" | jq -r '.query')
@@ -204,7 +204,7 @@ main_status_landing_ip() {
     
     local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -z "$has_proxy" || "$has_proxy" == "null" ]]; then
-        local geo=$(curl -fsSLk -m 3 "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(curl -fsSLk -m 6 "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local ip=$(echo "$geo" | jq -r '.query')
@@ -239,7 +239,7 @@ main_status_landing_ip() {
             curl_proxy="-x ${proto_prefix}://${safe_server}:${p_port}"
         fi
         
-        local geo=$(curl -fsSLk -m 4 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(curl -fsSLk -m 6 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local ip=$(echo "$geo" | jq -r '.query')
@@ -274,7 +274,7 @@ main_realtime_status_panel() {
     main_status_landing_ip > /tmp/hy2_landing_$$.tmp 2>/dev/null &
     PID4=$!
     
-    ( sleep 3; kill -9 $PID1 $PID2 $PID3 $PID4 >/dev/null 2>&1 ) >/dev/null 2>&1 &
+    ( sleep 6; kill -9 $PID1 $PID2 $PID3 $PID4 >/dev/null 2>&1 ) >/dev/null 2>&1 &
     WATCHDOG_PID=$!
     
     wait $PID1 $PID2 $PID3 $PID4 2>/dev/null
