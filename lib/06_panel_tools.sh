@@ -1156,6 +1156,7 @@ config_modify_menu() {
         echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hy2 的自签名证书${PLAIN}"
         echo -e " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hy2 的跳跃端口${PLAIN}"
         echo -e " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}"
+                echo -e " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_PURPLE}配置节点定时停用限时 (到期自动断网)${PLAIN}"
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
