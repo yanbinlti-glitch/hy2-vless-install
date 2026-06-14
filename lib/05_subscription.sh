@@ -35,7 +35,7 @@ generate_client_configs() {
     fi
 
     local sub_uuid=$(cat /root/.hy2_sub_uuid 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
-    [[ -z "$sub_uuid" ]] && sub_uuid=$(echo "${PUBLIC_IP}-Singbox-Sub" | md5sum | head -c 16)
+    [[ -z "$sub_uuid" ]] && sub_uuid=$(echo "$(get_sub_ip)-Singbox-Sub" | md5sum | head -c 16)
     echo "$sub_uuid" > /root/.hy2_sub_uuid
     echo "$sub_uuid" > /etc/sing-box/sub_path.txt
     
@@ -48,9 +48,9 @@ generate_client_configs() {
     local sb_outbounds=""
     local sb_tags=""
 
-    local yaml_json_ip="$PUBLIC_IP"
-    local uri_ip="$PUBLIC_IP"
-    [[ "$PUBLIC_IP" == *":"* ]] && uri_ip="[$PUBLIC_IP]"
+    local yaml_json_ip="$(get_sub_ip)"
+    local uri_ip="$(get_sub_ip)"
+    [[ "$(get_sub_ip)" == *":"* ]] && uri_ip="[$(get_sub_ip)]"
 
     # ================= 聚合: Hysteria 2 =================
     if [[ $has_hy2 -eq 1 ]]; then
@@ -72,7 +72,7 @@ generate_client_configs() {
 
         local yaml_pwd="${pwd//\'/\'\'}"
         local s_pwd=$(jq -nr --arg v "$pwd" '$v|@uri')
-        local url="hysteria2://$s_pwd@$uri_ip:$hy2_client_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
+        local url="hysteria2://$s_pwd@$(get_link_ip):$hy2_client_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
         [[ -n "$hop_ports" ]] && url="${url}&mport=${hop_ports}"
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
         url="${url}#${safe_node_name}"
@@ -123,7 +123,7 @@ generate_client_configs() {
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
 
-        local url="vless://$uuid@$uri_ip:$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#${safe_node_name}"
+        local url="vless://$uuid@$(get_link_ip):$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#${safe_node_name}"
         
         url_all="${url_all}${url}
 "
@@ -160,8 +160,8 @@ generate_client_configs() {
     printf "%s" "$url_all" > "$web_dir/$sub_uuid/url.txt"
     printf "%s" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%s" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
 
-    local sub_url="http://${PUBLIC_IP}:${sub_port}/${sub_uuid}"
-    [[ "$PUBLIC_IP" == *":"* ]] && sub_url="http://[${PUBLIC_IP}]:${sub_port}/${sub_uuid}"
+    local sub_url="http://$(get_sub_ip):${sub_port}/${sub_uuid}"
+    [[ "$(get_sub_ip)" == *":"* ]] && sub_url="http://[$(get_sub_ip)]:${sub_port}/${sub_uuid}"
     if command -v qrencode >/dev/null 2>&1; then
         qrencode -o "$web_dir/$sub_uuid/sub_qr.png" -s 8 -m 2 "$sub_url" || true
         qrencode -t ANSIUTF8 "$sub_url" > "$web_dir/$sub_uuid/sub_qr.txt" || true

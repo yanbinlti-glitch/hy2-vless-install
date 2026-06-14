@@ -1,12 +1,40 @@
 #!/usr/bin/env bash
 
 
+# --- V1.5.1 纯 IPv6 双栈自适应探针 ---
+get_link_ip() {
+    local ip="${PUBLIC_IP}"
+    if [[ -z "$ip" || "$ip" == "未检测到"* || "$ip" == "未知"* || "$ip" == "127.0.0.1" ]]; then
+        local my_ipv6=$(cat /tmp/hy2_ipv6*.tmp 2>/dev/null | head -n 1)
+        [[ -z "$my_ipv6" ]] && my_ipv6=$(curl -fsS6m2 https://api64.ipify.org 2>/dev/null || ip -6 addr show scope global 2>/dev/null | awk '/inet6/ {print $2}' | cut -d/ -f1 | head -n 1)
+        if [[ -n "$my_ipv6" && "$my_ipv6" != "未检测到"* ]]; then
+            ip="[${my_ipv6}]"
+        else
+            ip="127.0.0.1"
+        fi
+    fi
+    echo "$ip"
+}
+
+get_sub_ip() {
+    local ip="${PUBLIC_IP}"
+    if [[ -z "$ip" || "$ip" == "未检测到"* || "$ip" == "未知"* || "$ip" == "127.0.0.1" ]]; then
+        local my_ipv6=$(cat /tmp/hy2_ipv6*.tmp 2>/dev/null | head -n 1)
+        [[ -z "$my_ipv6" ]] && my_ipv6=$(curl -fsS6m2 https://api64.ipify.org 2>/dev/null || ip -6 addr show scope global 2>/dev/null | awk '/inet6/ {print $2}' | cut -d/ -f1 | head -n 1)
+        [[ -n "$my_ipv6" && "$my_ipv6" != "未检测到"* ]] && ip="$my_ipv6"
+    fi
+    echo "$ip"
+}
+
+
+
 # --- V1.4.9 全链路通用静默 UI 引擎 ---
 _smart_run() {
     local msg="$1"
     shift
     # 清理当前行终端残留
-    printf "[K"
+    printf "
+[K"
     echo -en " [1;36m▶ ${msg}...[0m "
     
     # 幽灵进程接管：将真实指令打入黑洞并在后台执行，完美规避 SSH 断流
