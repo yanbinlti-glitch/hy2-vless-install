@@ -1,6 +1,42 @@
 #!/usr/bin/env bash
 
 
+# --- V1.4.9 全链路通用静默 UI 引擎 ---
+_smart_run() {
+    local msg="$1"
+    shift
+    # 清理当前行终端残留
+    printf "[K"
+    echo -en " [1;36m▶ ${msg}...[0m "
+    
+    # 幽灵进程接管：将真实指令打入黑洞并在后台执行，完美规避 SSH 断流
+    "$@" >/tmp/run_task.log 2>&1 &
+    local pid=$!
+    
+    # UI 线程自旋锁
+    local spinstr='|/-\'
+    while kill -0 $pid 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "[%c]" "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep 0.15
+        printf ""
+    done
+    wait $pid
+    local exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        printf "[1;32m[✔] 完成！      [0m
+"
+    else
+        printf "[1;31m[✘] 失败！(错误日志已保存至 /tmp/run_task.log)[0m
+"
+    fi
+    return $exit_code
+}
+
+
+
 # --- V1.4.8 OOM防爆盾与静默安装引擎 ---
 _smart_install() {
     local pkg_mgr="$1"

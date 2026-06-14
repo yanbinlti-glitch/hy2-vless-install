@@ -421,7 +421,7 @@ ensure_singbox_core() {
     rm -rf /opt/hy2_tmp/sing-box*
 
     if ! wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "$dl_url"; then
-        wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
+        _smart_run "正在从 Github 拉取 Sing-box 核心" wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
     fi
 
     if [[ ! -s /opt/hy2_tmp/sing-box.tar.gz ]]; then
@@ -452,7 +452,7 @@ ensure_singbox_core() {
     fi
 
     rm -rf /tmp/sing-box-*-linux-* 2>/dev/null
-    tar -xzf /opt/hy2_tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
+    _smart_run "正在解压并装配底层核心" tar -xzf /opt/hy2_tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
     local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}" | head -n 1)
     if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
         mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
