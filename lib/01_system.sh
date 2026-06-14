@@ -1,4 +1,71 @@
 #!/usr/bin/env bash
+
+
+# --- V1.4.8 OOM防爆盾与静默安装引擎 ---
+_smart_install() {
+    local pkg_mgr="$1"
+    shift
+    local pkgs="$*"
+    
+    local total_ram=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+    local swap_added=0
+    
+    # 低配防死机：动态挂载 512MB 虚拟内存
+    if [[ -n "$total_ram" ]] && [ "$total_ram" -lt 400 ] && [ "$(free -m 2>/dev/null | awk '/^Swap:/{print $2}')" -eq 0 ]; then
+        echo -e "
+ [1;33m▶ [内存防爆盾] 检测到极小内存 ($total_ram MB)，正动态挂载 512MB 虚拟内存防宕机...[0m"
+        dd if=/dev/zero of=/tmp/hy2_swap bs=1M count=512 status=none
+        chmod 600 /tmp/hy2_swap
+        mkswap /tmp/hy2_swap >/dev/null 2>&1
+        swapon /tmp/hy2_swap >/dev/null 2>&1
+        swap_added=1
+    fi
+
+    # 清理多余空格并截断超长包名用于 UI 展示
+    local display_pkgs=$(echo "$pkgs" | tr -s ' ' | cut -c 1-30)
+    echo -en " [1;36m▶ 正在静默极速安装底层依赖: [0;32m${display_pkgs}...[0m "
+    
+    # 防卡顿：开启子进程静默重定向安装
+    (
+        if [ "$pkg_mgr" == "apk" ]; then
+            command apk update >/tmp/pkg.log 2>&1
+            command apk add --no-cache $pkgs >>/tmp/pkg.log 2>&1
+        else
+            export DEBIAN_FRONTEND=noninteractive
+            command apt-get update -q -y >/tmp/pkg.log 2>&1
+            command apt-get install -q -y $pkgs >>/tmp/pkg.log 2>&1
+        fi
+    ) &
+    local pid=$!
+    
+    # 防假死：UI 线程动画自旋锁
+    local spinstr='|/-\'
+    while kill -0 $pid 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "[%c]" "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep 0.15
+        printf ""
+    done
+    wait $pid
+    local exit_code=$?
+
+    # 卸载内存装甲，做到来去无痕
+    if [ "$swap_added" -eq 1 ]; then
+        swapoff /tmp/hy2_swap >/dev/null 2>&1
+        rm -f /tmp/hy2_swap
+    fi
+
+    if [ $exit_code -eq 0 ]; then
+        printf "[1;32m[✔] 安装完成！      [0m
+"
+    else
+        printf "[1;31m[✘] 安装失败！详见 /tmp/pkg.log[0m
+"
+        cat /tmp/pkg.log | tail -n 3
+    fi
+}
+
 # shellcheck shell=bash
 
 
