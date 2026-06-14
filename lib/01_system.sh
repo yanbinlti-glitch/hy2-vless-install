@@ -41,6 +41,9 @@ _smart_run() {
     "$@" >/tmp/run_task.log 2>&1 &
     local pid=$!
     
+    # 内核级中断拦截 (Trap)：防止用户 Ctrl+C 导致后台任务变成僵尸进程锁死系统
+    trap 'kill -9 $pid 2>/dev/null; printf "\n\b\b\b\033[1;31m[!] 检测到强行中断 (Ctrl+C)，已物理连坐击杀后台僵尸进程！\033[0m\n"; trap - SIGINT; return 1' SIGINT
+    
     # UI 线程自旋锁
     local spinstr='|/-\'
     while kill -0 $pid 2>/dev/null; do
@@ -52,6 +55,7 @@ _smart_run() {
     done
     wait $pid
     local exit_code=$?
+    trap - SIGINT # 任务正常结束，解除拦截
     
     if [ $exit_code -eq 0 ]; then
         printf "[1;32m[✔] 完成！      [0m
@@ -113,6 +117,7 @@ _smart_install() {
     done
     wait $pid
     local exit_code=$?
+    trap - SIGINT # 任务正常结束，解除拦截
 
     # 卸载内存装甲，做到来去无痕
     if [ "$swap_added" -eq 1 ]; then
