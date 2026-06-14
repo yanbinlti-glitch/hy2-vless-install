@@ -305,6 +305,7 @@ config_outbound() {
             fi
 
             if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[致命错误] jq 结构化写入失败，已强行中止流程！\033[0m"; sleep 2; return; fi
+            rm -f /tmp/outbound_block.json /tmp/sb_out.json /tmp/ob_opt.json 2>/dev/null
             
             green "  新落地代理配置写入完毕！"
             if restart_singbox_checked; then
@@ -322,6 +323,7 @@ config_outbound() {
             yellow "  正在清除中转路由配置..."
             jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))' /etc/sing-box/config.json > /tmp/sb_out.json
             if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[致命错误] jq 结构化写入失败，已强行中止流程！\033[0m"; sleep 2; return; fi
+            rm -f /tmp/outbound_block.json /tmp/sb_out.json /tmp/ob_opt.json 2>/dev/null
             
             if restart_singbox_checked; then
                 sleep 1
