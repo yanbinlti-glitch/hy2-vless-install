@@ -258,6 +258,12 @@ config_outbound() {
                 fi
             fi
 
+            # --- V1.4.6 跨洲链路底层优化引擎 ---
+            if [ -f /tmp/outbound_block.json ]; then
+                # 强行注入 TCP Fast Open 参数，节约 1-RTT 握手时间，大幅增强跨洲弱网环境下的响应速度
+                jq '.[0] += {"tcp_fast_open": true}' /tmp/outbound_block.json > /tmp/ob_opt.json 2>/dev/null && mv /tmp/ob_opt.json /tmp/outbound_block.json
+            fi
+
             echo ""
             yellow "  正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
             
