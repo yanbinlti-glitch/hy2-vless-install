@@ -421,6 +421,10 @@ ensure_singbox_core() {
     rm -rf /opt/hy2_tmp/sing-box*
 
     if ! wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "$dl_url"; then
+
+    # --- V1.5.3 绝对时间领域 (防 VLESS Reality 握手断流) ---
+    _smart_run "正在强制校准高精度 NTP 时间 (防御 Reality 证书握手崩盘)" ntpd -q -p pool.ntp.org 2>/dev/null || true
+    
         _smart_run "正在从 Github 拉取 Sing-box 核心" wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
     fi
 
