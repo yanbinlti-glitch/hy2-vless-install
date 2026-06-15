@@ -264,6 +264,11 @@ config_outbound() {
                 jq '.[0] += {"tcp_fast_open": true}' /tmp/outbound_block.json > /tmp/ob_opt.json 2>/dev/null && mv /tmp/ob_opt.json /tmp/outbound_block.json
             fi
 
+            # --- V1.5.5 量子并发引擎 (Smux 多路复用) ---
+            if [ -f /tmp/outbound_block.json ]; then
+                jq '.[0].multiplex = {"enabled": true, "protocol": "smux", "max_connections": 4, "min_streams": 2, "max_streams": 16}' /tmp/outbound_block.json > /tmp/ob_opt.json 2>/dev/null && mv /tmp/ob_opt.json /tmp/outbound_block.json
+            fi
+
             echo ""
             yellow "  正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
             
