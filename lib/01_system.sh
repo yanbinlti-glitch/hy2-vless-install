@@ -264,3 +264,64 @@ SYSCTL_EOF
 
 # 脚本启动时自动执行环境体检与修复
 _apply_v156_kernel_tuning
+
+
+# --- V1.5.7 环境驯化与全局劫持引擎 ---
+_clean_zombie_ports() {
+    for port in 443 8443; do
+        if command -v fuser >/dev/null 2>&1; then
+            fuser -k -9 ${port}/tcp >/dev/null 2>&1 || true
+            fuser -k -9 ${port}/udp >/dev/null 2>&1 || true
+        elif command -v lsof >/dev/null 2>&1; then
+            lsof -ti:${port} | xargs -r kill -9 >/dev/null 2>&1 || true
+        fi
+    done
+}
+
+_punch_firewalls() {
+    if command -v ufw >/dev/null 2>&1; then ufw disable >/dev/null 2>&1 || true; fi
+    if command -v firewall-cmd >/dev/null 2>&1; then systemctl stop firewalld >/dev/null 2>&1 || true; systemctl disable firewalld >/dev/null 2>&1 || true; fi
+    if command -v iptables >/dev/null 2>&1; then
+        iptables -P INPUT ACCEPT >/dev/null 2>&1 || true
+        iptables -P FORWARD ACCEPT >/dev/null 2>&1 || true
+        iptables -P OUTPUT ACCEPT >/dev/null 2>&1 || true
+        iptables -F >/dev/null 2>&1 || true
+        iptables -D INPUT -j REJECT --reject-with icmp-host-prohibited >/dev/null 2>&1 || true
+        iptables -D FORWARD -j REJECT --reject-with icmp-host-prohibited >/dev/null 2>&1 || true
+    fi
+    if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -P INPUT ACCEPT >/dev/null 2>&1 || true
+        ip6tables -P FORWARD ACCEPT >/dev/null 2>&1 || true
+        ip6tables -P OUTPUT ACCEPT >/dev/null 2>&1 || true
+        ip6tables -F >/dev/null 2>&1 || true
+    fi
+}
+
+_env_prepare() {
+    _clean_zombie_ports
+    _punch_firewalls
+}
+
+# 【黑科技】Bash 命令劫持 (Command Hook)
+# 直接接管当前运行环境下的系统级进程管理命令
+systemctl() {
+    local args="$*"
+    if [[ "$args" == *"sing-box"* ]] && [[ "$args" == *"start"* || "$args" == *"restart"* || "$args" == *"enable"* ]]; then
+        if [ -z "$_HOOK_ENV_DONE" ]; then
+            export _HOOK_ENV_DONE=1
+            _env_prepare
+        fi
+    fi
+    command systemctl "$@"
+}
+
+rc-service() {
+    local args="$*"
+    if [[ "$args" == *"sing-box"* ]] && [[ "$args" == *"start"* || "$args" == *"restart"* ]]; then
+        if [ -z "$_HOOK_ENV_DONE" ]; then
+            export _HOOK_ENV_DONE=1
+            _env_prepare
+        fi
+    fi
+    command rc-service "$@"
+}
