@@ -1126,7 +1126,7 @@ set_node_expiration() {
             printf "%s\n" "$new_exp" > "$exp_file"
             
             # 往系统 crontab 挂载每小时执行的隐形断网看门狗守护进程
-            (crontab -l 2>/dev/null | grep -v "expiration.txt"; echo "0 * * * * if [ \$(date +%s) -ge \$(cat /etc/sing-box/expiration.txt 2>/dev/null || echo 9999999999) ]; then rc-service sing-box stop >/dev/null 2>&1 || systemctl stop sing-box >/dev/null 2>&1; fi") | crontab -
+            (crontab -l 2>/dev/null | grep -v "expiration.txt"; echo "0 * * * * export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:/usr/local/sbin; exp=\$(cat /etc/sing-box/expiration.txt 2>/dev/null | tr -cd '0-9'); [ -z \"\$exp\" ] && exp=9999999999; if [ \$(date +%s) -ge \$exp ]; then rc-service sing-box stop >/dev/null 2>&1 || systemctl stop sing-box >/dev/null 2>&1; fi") | crontab -
             
             green " [✔] 成功！节点有效期已成功设定为 $exp_days 天。后盾看门狗守护已同步挂载！"
             ;;
