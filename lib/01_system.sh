@@ -237,3 +237,30 @@ gen_random_str() {
     head -c 32 /dev/urandom | base64 | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c "$len"
 }
 
+
+
+# --- V1.5.6 内核级 BDP 提速与日志自愈 (超体引擎) ---
+_apply_v156_kernel_tuning() {
+    # 1. 解除 Linux 内核跨洲高延迟 TCP 缓冲区锁喉 (BDP 优化)
+    if ! grep -q "net.ipv4.tcp_rmem" /etc/sysctl.conf 2>/dev/null; then
+        echo -e " \033[1;36m▶ 正在进行内核级 TCP 缓冲区深度扩容 (BDP 跨洲网络提速)...\033[0m "
+        cat << 'SYSCTL_EOF' >> /etc/sysctl.conf
+
+# V1.5.6 Sing-box BDP Cross-Continent TCP Tuning
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_rmem = 8192 262144 536870912
+net.ipv4.tcp_wmem = 4096 16384 536870912
+net.core.rmem_max = 536870912
+net.core.wmem_max = 536870912
+net.ipv4.tcp_fastopen = 3
+SYSCTL_EOF
+        sysctl -p >/dev/null 2>&1
+    fi
+
+    # 2. 挂载日志核爆防御看门狗 (每天凌晨 3 点静默清空日志，防廉价 VPS 爆盘死机)
+    (crontab -l 2>/dev/null | grep -v "sing-box_log_gc"; echo "0 3 * * * truncate -s 0 /var/log/sing-box/*.log >/dev/null 2>&1 # sing-box_log_gc") | crontab -
+}
+
+# 脚本启动时自动执行环境体检与修复
+_apply_v156_kernel_tuning
