@@ -427,5 +427,63 @@ menu() {
 
   read menuInput || exit 1
 
-  case $menuInput in     0 ) exit 0 ;;     1 ) inst_singbox ;;     2 ) remove_node ;;     3 ) singbox_switch ;;     4 ) config_modify_menu ;;     5 ) warp_ipv6_route_menu ;;     6 ) config_outbound ;;     7 ) showconf ;;     8 ) self_update ;;     9 ) enable_bbr ;;     10 ) quick_repair_and_status ;;     11 ) global_uninstall ;;     * ) red " 输入无效"; sleep 1 ;; esac
+  case $menuInput in     0 ) exit 0 ;;     1 ) inst_singbox ;;
+        2)
+            _modify_node_port
+            ;;     2 ) remove_node ;;     3 ) singbox_switch ;;     4 ) config_modify_menu ;;     5 ) warp_ipv6_route_menu ;;     6 ) config_outbound ;;     7 ) showconf ;;     8 ) self_update ;;     9 ) enable_bbr ;;     10 ) quick_repair_and_status ;;     11 ) global_uninstall ;;     * ) red " 输入无效"; sleep 1 ;; esac
+}
+
+
+# --- V1.6.3 端口动态跃迁与订阅同步引擎 ---
+_modify_node_port() {
+    echo ""
+    echo -e "  \033[1;36m▶ 启动端口动态跃迁机制...\033[0m"
+    echo -e "  \033[1;33m⚠️ 注意：修改端口会同步刷新 Nginx 在线订阅文件及终端生成的明文链接！\033[0m"
+    echo ""
+    read -p "  请输入全新节点通信端口 (10000-65535) [直接回车取消]: " new_port
+    
+    if [ -z "$new_port" ]; then
+        echo "  [i] 操作已取消，未做任何变更。"
+        return 0
+    fi
+    
+    # 1. 严格的类型与范围约束
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000 到 65535 之间的纯数字！\033[0m"
+        return 1
+    fi
+
+    # 2. 物理端口冲突硬核检查
+    if command -v lsof >/dev/null 2>&1; then
+        if lsof -i:"$new_port" >/dev/null 2>&1; then
+            echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被当前系统其他服务霸占，请更换！\033[0m"
+            return 1
+        fi
+    fi
+
+    # 3. 外科手术：重写 Sing-box 底层 Inbounds 监听配置
+    if [ -f /etc/sing-box/config.json ]; then
+        if jq '(.inbounds[] | select(.type=="vless" or .type=="hysteria2") | .listen_port) = '$new_port'' /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
+            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
+        else
+            echo -e "  \033[1;31m[✘] 错误：底层 JSON 配置解析失败，拒绝写入！\033[0m"
+            return 1
+        fi
+    fi
+
+    # 4. 全量数据持久化同步：刷新存储目录下的所有环境变量及端口快照 (保障订阅生成线同步)
+    if [ -d /etc/hy2-vless ]; then
+        find /etc/hy2-vless/ -type f -exec sed -i "s/^PORT=.*/PORT=$new_port/g" {} + 2>/dev/null || true
+        find /etc/hy2-vless/ -type f -exec sed -i "s/^port=.*/port=$new_port/g" {} + 2>/dev/null || true
+    fi
+
+    # 5. 调用 V1.5.7 全局劫持装甲：瞬间释放旧端口，打通新防火墙并平滑唤醒核心
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl restart sing-box >/dev/null 2>&1
+    fi
+    
+    echo ""
+    echo -e "  \033[1;32m[✔] 成功！通信端口已平滑跃迁至 [ $new_port ]，订阅分发系统已完成全量全同步！\033[0m"
+    echo ""
+    read -n 1 -s -r -p "按任意键返回信息面板..."
 }
