@@ -428,9 +428,7 @@ menu() {
   read menuInput || exit 1
 
   case $menuInput in     0 ) exit 0 ;;     1 ) inst_singbox ;;
-        2)
-            _modify_node_port
-            ;;     2 ) remove_node ;;     3 ) singbox_switch ;;     4 ) config_modify_menu ;;     5 ) warp_ipv6_route_menu ;;     6 ) config_outbound ;;     7 ) showconf ;;     8 ) self_update ;;     9 ) enable_bbr ;;     10 ) quick_repair_and_status ;;     11 ) global_uninstall ;;     * ) red " 输入无效"; sleep 1 ;; esac
+        2 ) remove_node ;;     3 ) singbox_switch ;;     4 ) config_modify_menu ;;     5 ) warp_ipv6_route_menu ;;     6 ) config_outbound ;;     7 ) showconf ;;     8 ) self_update ;;     9 ) enable_bbr ;;     10 ) quick_repair_and_status ;;     11 ) global_uninstall ;;     * ) red " 输入无效"; sleep 1 ;; esac
 }
 
 
