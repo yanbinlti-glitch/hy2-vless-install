@@ -13,12 +13,29 @@ export DEBIAN_FRONTEND=noninteractive
 
 SCRIPT_PATH=$(realpath "$0" 2>/dev/null || readlink -f "$0" 2>/dev/null || echo "$0")
 SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
-REPO_RAW_BASE="${HY2_VLESS_RAW_BASE:-https://raw.githubusercontent.com/yanbinlti-glitch/hy2-vless-install/main}"
+REPO_OWNER="${HY2_VLESS_REPO_OWNER:-yanbinlti-glitch}"
+REPO_NAME="${HY2_VLESS_REPO_NAME:-hy2-vless-install}"
+REPO_BRANCH="${HY2_VLESS_REPO_BRANCH:-main}"
+
+REPO_RAW_BASE=""
 INSTALL_DIR="${HY2_VLESS_INSTALL_DIR:-/opt/hy2-vless-install}"
 VERSION_FILE="VERSION"
-HY2_VLESS_VERSION="$(cat "$SCRIPT_DIR/$VERSION_FILE" 2>/dev/null || echo "dev")"
 
-export SCRIPT_PATH SCRIPT_DIR REPO_RAW_BASE INSTALL_DIR VERSION_FILE HY2_VLESS_VERSION
+HY2_VLESS_VERSION="$(
+  cat "$SCRIPT_DIR/$VERSION_FILE" \
+    2>/dev/null ||
+    echo "dev"
+)"
+
+BOOTSTRAP_DIR="${HY2_VLESS_BOOTSTRAP_DIR:-}"
+ORIGINAL_ARGS=("$@")
+
+export SCRIPT_PATH
+export SCRIPT_DIR
+export REPO_RAW_BASE
+export INSTALL_DIR
+export VERSION_FILE
+export HY2_VLESS_VERSION
 
 MODULES=(
   "00_ui.sh"
@@ -34,55 +51,388 @@ MODULES=(
 
 export MODULES
 
+cleanup_bootstrap_dir() {
+  if [[ -n "$BOOTSTRAP_DIR" &&
+        -d "$BOOTSTRAP_DIR" ]]
+  then
+    rm -rf -- "$BOOTSTRAP_DIR"
+    BOOTSTRAP_DIR=""
+  fi
+}
+
+if [[ -n "$BOOTSTRAP_DIR" ]]; then
+  trap cleanup_bootstrap_dir EXIT
+fi
+
 download_file() {
   local url="$1"
   local dest="$2"
 
+  case "$url" in
+    https://*)
+      ;;
+
+    *)
+      echo " [错误] 拒绝非 HTTPS 下载地址：$url" >&2
+      return 1
+      ;;
+  esac
+
+  mkdir -p "$(dirname "$dest")" ||
+    return 1
+
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --connect-timeout 10 --retry 2 "$url" -o "$dest"
+    curl \
+      --fail \
+      --silent \
+      --show-error \
+      --location \
+      --proto '=https' \
+      --tlsv1.2 \
+      --connect-timeout 10 \
+      --max-time 90 \
+      --retry 3 \
+      --retry-delay 1 \
+      "$url" \
+      --output "$dest"
+
   elif command -v wget >/dev/null 2>&1; then
-    wget -q --timeout=10 --tries=2 -O "$dest" "$url"
+    wget \
+      -q \
+      --timeout=15 \
+      --tries=3 \
+      -O "$dest" \
+      "$url"
+
   else
-    echo " [错误] 未找到 curl 或 wget，无法自动下载模块。" >&2
+    echo " [错误] 未找到 curl 或 wget，无法下载文件。" >&2
     return 1
   fi
 }
 
-ensure_modules() {
-  local missing=0
-  local m
+download_text() {
+  local url="$1"
 
-  for m in "${MODULES[@]}"; do
-    [[ -f "$SCRIPT_DIR/lib/$m" ]] || missing=1
+  case "$url" in
+    https://*)
+      ;;
+
+    *)
+      echo " [错误] 拒绝非 HTTPS API 地址：$url" >&2
+      return 1
+      ;;
+  esac
+
+  if command -v curl >/dev/null 2>&1; then
+    curl \
+      --fail \
+      --silent \
+      --show-error \
+      --location \
+      --proto '=https' \
+      --tlsv1.2 \
+      --connect-timeout 10 \
+      --max-time 30 \
+      --retry 2 \
+      "$url"
+
+  elif command -v wget >/dev/null 2>&1; then
+    wget \
+      -q \
+      --timeout=15 \
+      --tries=2 \
+      -O- \
+      "$url"
+
+  else
+    return 1
+  fi
+}
+
+resolve_bootstrap_base() {
+  local api=""
+  local response=""
+  local commit_sha=""
+
+  if [[ -n "${HY2_VLESS_RAW_BASE:-}" ]]; then
+    if [[ "${HY2_VLESS_ALLOW_CUSTOM_SOURCE:-0}" != "1" ]]
+    then
+      echo " [错误] 检测到自定义模块下载源，但未明确允许。" >&2
+      echo " [提示] 只有在信任该源时才设置：" >&2
+      echo " HY2_VLESS_ALLOW_CUSTOM_SOURCE=1" >&2
+      return 1
+    fi
+
+    case "$HY2_VLESS_RAW_BASE" in
+      https://*)
+        REPO_RAW_BASE="${HY2_VLESS_RAW_BASE%/}"
+        export REPO_RAW_BASE
+
+        echo " [警告] 当前使用显式允许的自定义下载源。" >&2
+        return 0
+        ;;
+
+      *)
+        echo " [错误] 自定义下载源必须使用 HTTPS。" >&2
+        return 1
+        ;;
+    esac
+  fi
+
+  api="$(
+    printf \
+      'https://api.github.com/repos/%s/%s/commits/%s' \
+      "$REPO_OWNER" \
+      "$REPO_NAME" \
+      "$REPO_BRANCH"
+  )"
+
+  response="$(download_text "$api")" || {
+    echo " [错误] 无法获取 GitHub 分支提交信息。" >&2
+    return 1
+  }
+
+  commit_sha="$(
+    printf '%s\n' "$response" |
+      grep -m1 -E \
+        '"sha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' |
+      sed -E \
+        's/.*"sha"[[:space:]]*:[[:space:]]*"([0-9a-f]{40})".*/\1/'
+  )"
+
+  if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo " [错误] GitHub API 未返回有效的提交 SHA。" >&2
+    return 1
+  fi
+
+  REPO_RAW_BASE="$(
+    printf \
+      'https://raw.githubusercontent.com/%s/%s/%s' \
+      "$REPO_OWNER" \
+      "$REPO_NAME" \
+      "$commit_sha"
+  )"
+
+  export REPO_RAW_BASE
+
+  echo " [安全] 本次引导已锁定不可变提交：$commit_sha"
+}
+
+verify_bootstrap_checksums() {
+  local root="$1"
+  local manifest="$root/SHA256SUMS"
+  local target=""
+  local expected=""
+  local actual=""
+  local module=""
+  local -a targets=()
+
+  if [[ ! -s "$manifest" ]]; then
+    echo " [错误] 缺少有效的 SHA256SUMS。" >&2
+    return 1
+  fi
+
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    echo " [错误] 系统缺少 sha256sum，无法验证引导文件。" >&2
+    return 1
+  fi
+
+  targets=(
+    "install.sh"
+    "$VERSION_FILE"
+  )
+
+  for module in "${MODULES[@]}"; do
+    targets+=("lib/$module")
   done
 
-  [[ "$missing" -eq 0 ]] && return 0
+  for target in "${targets[@]}"; do
+    if [[ ! -f "$root/$target" ]]; then
+      echo " [错误] 引导文件缺失：$target" >&2
+      return 1
+    fi
 
-  local boot_dir
-  boot_dir=$(mktemp -d /tmp/hy2-vless-install.XXXXXX) || return 1
-  mkdir -p "$boot_dir/lib"
+    expected="$(
+      awk \
+        -v target="$target" \
+        '
+          $2 == target || $2 == "./" target {
+            print $1
+            exit
+          }
+        ' \
+        "$manifest"
+    )"
 
-  echo " [提示] 未检测到完整本地 lib/ 模块，正在从 GitHub 拉取模块文件..."
+    if [[ ! "$expected" =~ ^[0-9a-fA-F]{64}$ ]]; then
+      echo " [错误] 校验清单缺少有效记录：$target" >&2
+      return 1
+    fi
 
-  for m in "${MODULES[@]}"; do
-    local url="${REPO_RAW_BASE}/lib/${m}"
-    if ! download_file "$url" "$boot_dir/lib/$m"; then
-      echo " [错误] 模块下载失败：$url" >&2
-      rm -rf "$boot_dir"
+    actual="$(
+      sha256sum "$root/$target" |
+        awk '{print tolower($1)}'
+    )"
+
+    expected="${expected,,}"
+
+    if [[ "$actual" != "$expected" ]]; then
+      echo " [错误] SHA-256 校验失败：$target" >&2
+      echo " [期望] $expected" >&2
+      echo " [实际] $actual" >&2
       return 1
     fi
   done
 
-  if ! download_file "${REPO_RAW_BASE}/${VERSION_FILE}" "$boot_dir/${VERSION_FILE}" 2>/dev/null; then
-    echo "dev" > "$boot_dir/${VERSION_FILE}"
+  echo " [安全] 首次引导文件 SHA-256 校验全部通过。"
+}
+
+validate_local_bundle() {
+  local module=""
+
+  if [[ ! -f "$SCRIPT_DIR/install.sh" ]]; then
+    echo " [错误] 找不到入口文件：$SCRIPT_DIR/install.sh" >&2
+    return 1
   fi
 
-  cp -f "$SCRIPT_PATH" "$boot_dir/install.sh" 2>/dev/null || true
-  SCRIPT_DIR="$boot_dir"
-  HY2_VLESS_VERSION="$(cat "$SCRIPT_DIR/$VERSION_FILE" 2>/dev/null || echo "dev")"
-  export SCRIPT_DIR HY2_VLESS_VERSION
+  if ! bash -n "$SCRIPT_DIR/install.sh"; then
+    echo " [错误] install.sh 语法检查失败。" >&2
+    return 1
+  fi
 
-  return 0
+  for module in "${MODULES[@]}"; do
+    if [[ ! -f "$SCRIPT_DIR/lib/$module" ]]; then
+      echo " [错误] 模块文件缺失：$module" >&2
+      return 1
+    fi
+
+    if ! bash -n "$SCRIPT_DIR/lib/$module"; then
+      echo " [错误] 模块语法检查失败：$module" >&2
+      return 1
+    fi
+  done
+
+  echo " [安全] 入口和全部模块语法检查通过。"
+}
+
+ensure_modules() {
+  local missing=0
+  local module=""
+  local url=""
+  local boot_dir=""
+
+  for module in "${MODULES[@]}"; do
+    if [[ ! -f "$SCRIPT_DIR/lib/$module" ]]; then
+      missing=1
+      break
+    fi
+  done
+
+  if [[ "$missing" -eq 0 ]]; then
+    return 0
+  fi
+
+  echo " [提示] 未检测到完整本地模块，准备安全下载完整引导包……"
+
+  resolve_bootstrap_base ||
+    return 1
+
+  boot_dir="$(
+    mktemp -d \
+      "${TMPDIR:-/tmp}/hy2-vless-bootstrap.XXXXXX"
+  )" || {
+    echo " [错误] 无法创建引导临时目录。" >&2
+    return 1
+  }
+
+  chmod 700 "$boot_dir" || {
+    rm -rf -- "$boot_dir"
+    return 1
+  }
+
+  mkdir -p "$boot_dir/lib" || {
+    rm -rf -- "$boot_dir"
+    return 1
+  }
+
+  if ! download_file \
+    "$REPO_RAW_BASE/SHA256SUMS" \
+    "$boot_dir/SHA256SUMS"
+  then
+    echo " [错误] SHA256SUMS 下载失败。" >&2
+    rm -rf -- "$boot_dir"
+    return 1
+  fi
+
+  if ! download_file \
+    "$REPO_RAW_BASE/install.sh" \
+    "$boot_dir/install.sh"
+  then
+    echo " [错误] install.sh 下载失败。" >&2
+    rm -rf -- "$boot_dir"
+    return 1
+  fi
+
+  if ! download_file \
+    "$REPO_RAW_BASE/$VERSION_FILE" \
+    "$boot_dir/$VERSION_FILE"
+  then
+    echo " [错误] VERSION 下载失败。" >&2
+    rm -rf -- "$boot_dir"
+    return 1
+  fi
+
+  for module in "${MODULES[@]}"; do
+    url="$REPO_RAW_BASE/lib/$module"
+
+    if ! download_file \
+      "$url" \
+      "$boot_dir/lib/$module"
+    then
+      echo " [错误] 模块下载失败：$module" >&2
+      rm -rf -- "$boot_dir"
+      return 1
+    fi
+  done
+
+  if ! verify_bootstrap_checksums "$boot_dir"; then
+    rm -rf -- "$boot_dir"
+    return 1
+  fi
+
+  if ! bash -n "$boot_dir/install.sh"; then
+    echo " [错误] 下载的 install.sh 语法检查失败。" >&2
+    rm -rf -- "$boot_dir"
+    return 1
+  fi
+
+  for module in "${MODULES[@]}"; do
+    if ! bash -n "$boot_dir/lib/$module"; then
+      echo " [错误] 下载的模块语法检查失败：$module" >&2
+      rm -rf -- "$boot_dir"
+      return 1
+    fi
+  done
+
+  chmod 700 "$boot_dir/install.sh"
+  chmod 600 "$boot_dir/SHA256SUMS"
+  chmod 644 "$boot_dir/$VERSION_FILE"
+  chmod 700 "$boot_dir"/lib/*.sh
+
+  echo " [安全] 完整引导包验证通过，正在切换到可信副本……"
+
+  export HY2_VLESS_BOOTSTRAP_DIR="$boot_dir"
+
+  exec bash \
+    "$boot_dir/install.sh" \
+    "${ORIGINAL_ARGS[@]}"
+
+  local rc=$?
+
+  echo " [错误] 无法执行已验证的入口脚本。" >&2
+  rm -rf -- "$boot_dir"
+
+  return "$rc"
 }
 
 install_self_shortcut() {
@@ -94,6 +444,7 @@ install_self_shortcut() {
     cp -f "$SCRIPT_DIR/install.sh" "$INSTALL_DIR/install.sh" 2>/dev/null || cp -f "$SCRIPT_PATH" "$INSTALL_DIR/install.sh"
     cp -f "$SCRIPT_DIR"/lib/*.sh "$INSTALL_DIR/lib/"
     cp -f "$SCRIPT_DIR/$VERSION_FILE" "$INSTALL_DIR/$VERSION_FILE" 2>/dev/null || echo "$HY2_VLESS_VERSION" > "$INSTALL_DIR/$VERSION_FILE"
+cp -f "$SCRIPT_DIR/SHA256SUMS" "$INSTALL_DIR/SHA256SUMS" 2>/dev/null || true
     chmod +x "$INSTALL_DIR/install.sh"
     chmod +x "$INSTALL_DIR"/lib/*.sh 2>/dev/null || true
   fi
@@ -108,6 +459,7 @@ EOF_WRAPPER
 }
 
 ensure_modules || exit 1
+validate_local_bundle || exit 1
 
 for module in "${MODULES[@]}"; do
   # shellcheck source=/dev/null
