@@ -1,3 +1,4 @@
+# V1.5.8_PROBE_FIX
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
@@ -22,7 +23,7 @@ main_status_get_public_ipv4() {
     local ip=""
     if command -v curl >/dev/null 2>&1; then
         ip=$(curl -fsSLk -m 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
-        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api.ipify.org 2>/dev/null | tr -d '[:space:]')
+        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api.ipify.org 2 --retry 2 --connect-timeout 6 >/dev/null | tr -d '[:space:]')
     fi
     if [[ -z "$ip" || ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v wget >/dev/null 2>&1; then
         ip=$(wget -qO- -T 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
@@ -85,7 +86,7 @@ main_status_singbox_version() {
 main_status_latest_singbox_version() {
     local latest=""
     if command -v curl >/dev/null 2>&1; then
-        latest=$(curl -sI -m 3 https://github.com/SagerNet/sing-box/releases/latest 2>/dev/null | grep -i location | awk -F '/' '{print $NF}' | tr -d '
+        latest=$(curl -sI -m 6 https://github.com/SagerNet/sing-box/releases/latest 2>/dev/null | grep -i location | awk -F '/' '{print $NF}' | tr -d '
 ')
     fi
     [[ -n "$latest" ]] && echo "$latest" || echo "获取失败"
@@ -332,7 +333,7 @@ main_realtime_status_panel() {
     # 直连 IP 终极高压补位系统
     local disp_v4="${clean_ipv4}"
     if [[ -z "$disp_v4" || "$disp_v4" == "检测超时"* ]]; then
-        disp_v4=$(curl -fsS4m2 https://api.ipify.org 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
+        disp_v4=$(curl -fsS4m2 https://api.ipify.org 2 --retry 2 --connect-timeout 6 >/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
         [[ -z "$disp_v4" ]] && disp_v4="未知本机IP"
     fi
 
