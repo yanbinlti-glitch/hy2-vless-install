@@ -240,13 +240,28 @@ LOGEOF
     # 注入后台幽灵清道夫 (每天凌晨 4 点智能清理极限小鸡缓存)
     cat << 'CLEANEOF' > /usr/local/bin/hy2_auto_clean.sh
 #!/bin/sh
+set -eu
+
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-find /tmp -type f -mtime +1 -delete 2>/dev/null || true
-find /opt/hy2_tmp -type f -mtime +1 -delete 2>/dev/null || true
-rm -rf /var/cache/apk/* 2>/dev/null
-apt-get clean 2>/dev/null || true
-rm -f /var/log/*.gz /var/log/*.1 /var/log/*/*.gz 2>/dev/null
-journalctl --vacuum-size=5M 2>/dev/null || true
+
+# 只清理本项目拥有的临时目录。
+if [ -d /opt/hy2_tmp ]; then
+  find /opt/hy2_tmp \
+    -xdev \
+    -type f \
+    -mtime +1 \
+    -delete \
+    2>/dev/null || true
+
+  find /opt/hy2_tmp \
+    -xdev \
+    -mindepth 1 \
+    -type d \
+    -empty \
+    -mtime +1 \
+    -delete \
+    2>/dev/null || true
+fi
 CLEANEOF
     chmod +x /usr/local/bin/hy2_auto_clean.sh
     if ! crontab -l 2>/dev/null | grep -q "hy2_auto_clean.sh"; then
