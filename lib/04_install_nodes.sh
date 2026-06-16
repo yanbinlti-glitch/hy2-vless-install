@@ -201,6 +201,99 @@ inst_sub_port(){
     echo "$sub_port_input" > /etc/sing-box/sub_port.txt
 }
 
+_ensure_singbox_service_account() {
+  local login_shell="/usr/sbin/nologin"
+  local uid=""
+
+  if [[ ! -x "$login_shell" ]]; then
+    if [[ -x /sbin/nologin ]]; then
+      login_shell="/sbin/nologin"
+    else
+      login_shell="/bin/false"
+    fi
+  fi
+
+  if ! grep -q '^sing-box:' /etc/group 2>/dev/null; then
+    if [[ "$SYSTEM" == "Alpine" ]]; then
+      addgroup -S sing-box || return 1
+    else
+      groupadd --system sing-box || return 1
+    fi
+  fi
+
+  if id -u sing-box >/dev/null 2>&1; then
+    uid="$(id -u sing-box)"
+
+    if [[ "$uid" == "0" ]]; then
+      red " [错误] sing-box 账户不能映射到 root。"
+      return 1
+    fi
+  else
+    if [[ "$SYSTEM" == "Alpine" ]]; then
+      adduser \
+        -S \
+        -D \
+        -H \
+        -h /var/lib/sing-box \
+        -s "$login_shell" \
+        -G sing-box \
+        sing-box || return 1
+    else
+      useradd \
+        --system \
+        --gid sing-box \
+        --home-dir /var/lib/sing-box \
+        --shell "$login_shell" \
+        sing-box || return 1
+    fi
+  fi
+}
+
+_secure_singbox_runtime_permissions() {
+  local item=""
+
+  _ensure_singbox_service_account || {
+    red " [错误] 无法创建或验证 Sing-box 专用账户。"
+    return 1
+  }
+
+  if [[ -L /etc/sing-box ]]; then
+    red " [错误] /etc/sing-box 不能是符号链接。"
+    return 1
+  fi
+
+  install \
+    -d \
+    -o root \
+    -g sing-box \
+    -m 0750 \
+    /etc/sing-box || return 1
+
+  install \
+    -d \
+    -o sing-box \
+    -g sing-box \
+    -m 0750 \
+    /var/lib/sing-box || return 1
+
+  for item in \
+    /etc/sing-box/config.json \
+    /etc/sing-box/config.json.last-known-good \
+    /etc/sing-box/cert.crt \
+    /etc/sing-box/private.key
+  do
+    [[ -e "$item" ]] || continue
+
+    if [[ -L "$item" || ! -f "$item" ]]; then
+      red " [错误] Sing-box 敏感文件必须是普通文件：$item"
+      return 1
+    fi
+
+    chown root:sing-box "$item" || return 1
+    chmod 0640 "$item" || return 1
+  done
+}
+
 setup_singbox_service() {
     local total_mem_mb=$(free -m | awk '/Mem:/ {print $2}')
     local sys_gomem="50MiB"
@@ -215,7 +308,9 @@ setup_singbox_service() {
     yellow "  根据物理机内存 ($total_mem_mb MB) 动态下发 Go 回收策略: GOMEMLIMIT=$sys_gomem"
 
     yellow "  正在装配 Sing-box 系统级守护进程 (挂载高强度沙盒防御)..."
-    if [[ $SYSTEM == "Alpine" ]]; then
+    _secure_singbox_runtime_permissions || return 1
+
+  if [[ $SYSTEM == "Alpine" ]]; then
         cat << 'EOF' > /etc/init.d/sing-box
 #!/sbin/openrc-run
 export GOMEMLIMIT=50MiB
@@ -223,6 +318,8 @@ export GOGC=20
 description="Sing-box Service"
 command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
+command_user="sing-box:sing-box"
+capabilities="^cap_net_bind_service"
 command_background=true
 pidfile="/run/sing-box.pid"
 respawn="yes"
@@ -231,6 +328,10 @@ respawn_period=60
 output_log="/var/log/sing-box.log"
 error_log="/var/log/sing-box.log"
 rc_ulimit="-n 524288"
+
+start_pre() {
+  checkpath     --file     --mode 0640     --owner sing-box:sing-box     /var/log/sing-box.log
+}
 EOF
         chmod +x /etc/init.d/sing-box
     else
@@ -243,8 +344,9 @@ After=network.target
 Environment="GOMEMLIMIT=50MiB"
 Environment="GOGC=20"
 Type=simple
-User=root
-WorkingDirectory=/etc/sing-box
+User=sing-box
+Group=sing-box
+WorkingDirectory=/var/lib/sing-box
 LimitNOFILE=524288
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 Restart=always
@@ -252,10 +354,23 @@ RestartSec=3
 StandardOutput=journal
 StandardError=journal
 SyslogLevel=warning
-ProtectSystem=full
+UMask=0027
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-NoNewPrivileges=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadOnlyPaths=/etc/sing-box
+ReadWritePaths=/var/lib/sing-box
 
 [Install]
 WantedBy=multi-user.target
@@ -273,7 +388,7 @@ EOF
     copytruncate
 }
 LOGEOF
-        chmod 600 /etc/sing-box/config.json /etc/sing-box/*.crt /etc/sing-box/*.key 2>/dev/null || true
+        _secure_singbox_runtime_permissions || return 1
         _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload
     fi
 
@@ -962,6 +1077,11 @@ _abort_singbox_config_update() {
 }
 
 restart_singbox_checked() {
+  if ! _secure_singbox_runtime_permissions; then
+    red " [错误] 无法应用 Sing-box 安全文件权限。"
+    return 1
+  fi
+
   local service_was_active=0
   local restart_ok=1
 
