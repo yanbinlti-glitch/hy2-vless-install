@@ -123,7 +123,7 @@ generate_client_configs() {
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
 
-        local url="vless://$uuid@$(get_link_ip):$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#$(_url_encode "${safe_node_name}")"
+        local url="vless://$uuid@$(get_link_ip):$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#${safe_node_name}"
         
         url_all="${url_all}${url}
 "
