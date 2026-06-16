@@ -265,66 +265,15 @@ SYSCTL_EOF
 _apply_v156_kernel_tuning
 
 
-# --- V1.5.7 环境驯化与全局劫持引擎 ---
-_clean_zombie_ports() {
-    for port in 443 8443; do
-        if command -v fuser >/dev/null 2>&1; then
-            fuser -k -9 ${port}/tcp >/dev/null 2>&1 || true
-            fuser -k -9 ${port}/udp >/dev/null 2>&1 || true
-        elif command -v lsof >/dev/null 2>&1; then
-            lsof -ti:${port} | xargs -r kill -9 >/dev/null 2>&1 || true
-        fi
-    done
-}
-
-_punch_firewalls() {
-    if command -v ufw >/dev/null 2>&1; then ufw disable >/dev/null 2>&1 || true; fi
-    if command -v firewall-cmd >/dev/null 2>&1; then systemctl stop firewalld >/dev/null 2>&1 || true; systemctl disable firewalld >/dev/null 2>&1 || true; fi
-    if command -v iptables >/dev/null 2>&1; then
-        iptables -P INPUT ACCEPT >/dev/null 2>&1 || true
-        iptables -P FORWARD ACCEPT >/dev/null 2>&1 || true
-        iptables -P OUTPUT ACCEPT >/dev/null 2>&1 || true
-        iptables -F >/dev/null 2>&1 || true
-        iptables -D INPUT -j REJECT --reject-with icmp-host-prohibited >/dev/null 2>&1 || true
-        iptables -D FORWARD -j REJECT --reject-with icmp-host-prohibited >/dev/null 2>&1 || true
-    fi
-    if command -v ip6tables >/dev/null 2>&1; then
-        ip6tables -P INPUT ACCEPT >/dev/null 2>&1 || true
-        ip6tables -P FORWARD ACCEPT >/dev/null 2>&1 || true
-        ip6tables -P OUTPUT ACCEPT >/dev/null 2>&1 || true
-        ip6tables -F >/dev/null 2>&1 || true
-    fi
-}
-
-_env_prepare() {
-    _clean_zombie_ports
-    _punch_firewalls
-}
-
-# 【黑科技】Bash 命令劫持 (Command Hook)
-# 直接接管当前运行环境下的系统级进程管理命令
-systemctl() {
-    local args="$*"
-    if [[ "$args" == *"sing-box"* ]] && [[ "$args" == *"start"* || "$args" == *"restart"* || "$args" == *"enable"* ]]; then
-        if [ -z "$_HOOK_ENV_DONE" ]; then
-            export _HOOK_ENV_DONE=1
-            _env_prepare
-        fi
-    fi
-    command systemctl "$@"
-}
-
-rc-service() {
-    local args="$*"
-    if [[ "$args" == *"sing-box"* ]] && [[ "$args" == *"start"* || "$args" == *"restart"* ]]; then
-        if [ -z "$_HOOK_ENV_DONE" ]; then
-            export _HOOK_ENV_DONE=1
-            _env_prepare
-        fi
-    fi
-    command rc-service "$@"
-}
-
+# --- V1.5.7 安全修复：取消全局服务和防火墙命令劫持 ---
+#
+# 不再覆盖 systemctl / rc-service。
+# 不再自动关闭 UFW 或 firewalld。
+# 不再清空 iptables / ip6tables。
+# 不再强制杀死占用 443 或 8443 端口的进程。
+#
+# 服务控制由 lib/02_service_firewall.sh 中的 svc_* 函数负责；
+# 端口冲突应由安装流程检测并提示用户选择其他端口。
 
 # --- V1.5.9 全字符安全编码引擎 ---
 # 纯 Bash 原生实现的 RFC 3986 标准 URI 编码器，完美清洗特殊符号与中文字符
