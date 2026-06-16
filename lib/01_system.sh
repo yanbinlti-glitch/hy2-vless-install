@@ -237,11 +237,96 @@ esac
 
 PUBLIC_IP=""
 valid_ip_literal() {
-    local ip="$1"
-    if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || [[ "$ip" =~ ^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}$ ]]; then
-        return 0
+  local ip="${1-}"
+  local lower=""
+  local octet=""
+  local value=0
+  local a=0
+  local b=0
+  local c=0
+  local d=0
+
+  [[ -n "$ip" ]] || return 1
+
+  # Python 标准库可以完整处理压缩 IPv6、IPv4 边界值
+  # 以及私网、回环、组播和保留地址。
+  if command -v python3 >/dev/null 2>&1; then
+    python3 \
+      -c '
+import ipaddress
+import sys
+
+try:
+    address = ipaddress.ip_address(sys.argv[1])
+except ValueError:
+    raise SystemExit(1)
+
+raise SystemExit(0 if address.is_global else 1)
+' \
+      "$ip" \
+      >/dev/null 2>&1
+
+    return $?
+  fi
+
+  # Python 缺失时使用严格 IPv4 后备检查。
+  if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    IFS='.' read -r a b c d <<< "$ip"
+
+    for octet in "$a" "$b" "$c" "$d"; do
+      [[ "$octet" =~ ^[0-9]+$ ]] ||
+        return 1
+
+      value=$((10#$octet))
+
+      (( value >= 0 && value <= 255 )) ||
+        return 1
+    done
+
+    a=$((10#$a))
+    b=$((10#$b))
+
+    # 拒绝非公网 IPv4 范围。
+    (( a != 0 )) || return 1
+    (( a != 10 )) || return 1
+    (( a != 127 )) || return 1
+    (( a < 224 )) || return 1
+
+    if (( a == 100 && b >= 64 && b <= 127 )); then
+      return 1
     fi
-    return 1
+
+    if (( a == 169 && b == 254 )); then
+      return 1
+    fi
+
+    if (( a == 172 && b >= 16 && b <= 31 )); then
+      return 1
+    fi
+
+    if (( a == 192 && b == 168 )); then
+      return 1
+    fi
+
+    return 0
+  fi
+
+  # IPv6 后备路径只接受十六进制和冒号，
+  # 再交给 iproute2 做语法解析。
+  [[ "$ip" == *:* ]] || return 1
+  [[ "$ip" != *[!0-9A-Fa-f:]* ]] || return 1
+  command -v ip >/dev/null 2>&1 || return 1
+  ip -6 route get "$ip" >/dev/null 2>&1 || return 1
+
+  lower="${ip,,}"
+
+  case "$lower" in
+    "::"|"::1"|fe8*|fe9*|fea*|feb*|fc*|fd*|ff*)
+      return 1
+      ;;
+  esac
+
+  return 0
 }
 
 realip() {
@@ -254,14 +339,14 @@ realip() {
 
     if ip -4 addr show scope global 2>/dev/null | grep -q 'inet '; then
         for ep in "${endpoints4[@]}"; do
-            ip=$(curl -fsS4m4 "$ep" -k 2>/dev/null | head -n1 | tr -d '[:space:]')
+            ip=$(curl -fsS4m4 "$ep" 2>/dev/null | head -n1 | tr -d '[:space:]')
             if valid_ip_literal "$ip"; then break; fi
             ip=""
         done
     fi
     if [[ -z "$ip" ]]; then
         for ep in "${endpoints6[@]}"; do
-            ip=$(curl -fsS6m4 "$ep" -k 2>/dev/null | head -n1 | tr -d '[:space:]')
+            ip=$(curl -fsS6m4 "$ep" 2>/dev/null | head -n1 | tr -d '[:space:]')
             if valid_ip_literal "$ip"; then break; fi
             ip=""
         done
@@ -304,7 +389,13 @@ SYSCTL_EOF
 }
 
 # 脚本启动时自动执行环境体检与修复
-_apply_v156_kernel_tuning
+if [[ "${HY2_VLESS_ENABLE_KERNEL_TUNING:-0}" == "1" ]]; then
+  yellow " [提示] 已显式启用全局内核与定时任务调优。"
+
+  _apply_v156_kernel_tuning
+else
+  yellow " [安全] 默认不修改全局 sysctl 或 root 定时任务。"
+fi
 
 
 # --- V1.5.7 安全修复：取消全局服务和防火墙命令劫持 ---
