@@ -426,105 +426,368 @@ fix_listen_for_no_ipv6() {
     fi
 }
 
-ensure_singbox_core() {
-    if [[ -x /usr/local/bin/sing-box ]]; then
-        return 0
-    fi
+ensure_singbox_core() (
+  local install_path="/usr/local/bin/sing-box"
+  local api_url="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+  local arch=""
+  local sb_arch=""
+  local sb_version=""
+  local sb_asset=""
+  local official_url=""
+  local api_asset_url=""
+  local expected_digest=""
+  local expected_hash=""
+  local actual_hash=""
+  local work_dir=""
+  local release_json=""
+  local archive=""
+  local archive_list=""
+  local extract_root=""
+  local extract_dir=""
+  local candidate=""
+  local install_tmp=""
+  local previous_binary=""
 
-    yellow "  未检测到 /usr/local/bin/sing-box，正在重新拉取核心..."
-    local arch=$(uname -m)
-    local sb_arch=""
-    case "$arch" in
-        x86_64 | amd64)      sb_arch="amd64" ;;
-        aarch64 | arm64)     sb_arch="arm64" ;;
-        armv7* | armv6*)     sb_arch="armv7" ;;
-        i386 | i686)         sb_arch="386" ;;
-        s390x)               sb_arch="s390x" ;;
-        *) red " [致命错误] Sing-box 暂不支持您的 CPU 架构: $arch！"; return 1 ;;
-    esac
+  # 已有核心必须能实际执行，不能只检查可执行位。
+  if [[ -x "$install_path" ]] &&
+     "$install_path" version >/dev/null 2>&1
+  then
+    return 0
+  fi
 
-    local sb_release_json="/opt/hy2_tmp/sing-box-release.json"
-    local sb_version=""
-    local sb_asset=""
-    local dl_url=""
-    local expected_digest=""
-    local expected_hash=""
-    local actual_hash=""
-
-    rm -f "$sb_release_json"
-
-    if command -v jq >/dev/null 2>&1 && curl -fsSL -m 15 "https://api.github.com/repos/SagerNet/sing-box/releases/latest" -o "$sb_release_json" 2>/dev/null; then
-        sb_version="$(jq -r '.tag_name // empty' "$sb_release_json" 2>/dev/null)"
-    fi
-
-    if [[ -z "$sb_version" || "$sb_version" == "null" ]]; then
-        sb_version=$(curl -sI -m 10 "https://github.com/SagerNet/sing-box/releases/latest" | grep -i location | awk -F '/' '{print $NF}' | tr -d '\r\n')
-    fi
-
-    [[ -z "$sb_version" ]] && sb_version="v1.12.0"
-
-    sb_asset="sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
-
-    if [[ -s "$sb_release_json" ]] && command -v jq >/dev/null 2>&1; then
-        dl_url="$(jq -r --arg name "$sb_asset" '.assets[]? | select(.name == $name) | .browser_download_url // empty' "$sb_release_json" 2>/dev/null | head -n1)"
-        expected_digest="$(jq -r --arg name "$sb_asset" '.assets[]? | select(.name == $name) | .digest // empty' "$sb_release_json" 2>/dev/null | head -n1)"
-    fi
-
-    [[ -z "$dl_url" || "$dl_url" == "null" ]] && dl_url="https://github.com/SagerNet/sing-box/releases/download/${sb_version}/${sb_asset}"
-
-    yellow "  目标版本: $sb_version ($sb_arch)，下载中..."
-    rm -rf /opt/hy2_tmp/sing-box*
-
-    if ! wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "$dl_url"; then
-
-    # --- V1.5.3 绝对时间领域 (防 VLESS Reality 握手断流) ---
-    _smart_run "正在强制校准高精度 NTP 时间 (防御 Reality 证书握手崩盘)" ntpd -q -p pool.ntp.org 2>/dev/null || true
-    
-        _smart_run "正在从 Github 拉取 Sing-box 核心" wget --timeout=15 --tries=3 -O /opt/hy2_tmp/sing-box.tar.gz "https://ghfast.top/$dl_url"
-    fi
-
-    if [[ ! -s /opt/hy2_tmp/sing-box.tar.gz ]]; then
-        red " [致命错误] Sing-box 核心下载失败，请检查网络。"
-        return 1
-    fi
-
-    if [[ "$expected_digest" == sha256:* ]]; then
-        expected_hash="${expected_digest#sha256:}"
-        actual_hash="$(sha256sum /opt/hy2_tmp/sing-box.tar.gz | awk '{print $1}')"
-
-        if [[ "$expected_hash" == "$actual_hash" ]]; then
-            green "  Sing-box 核心 sha256 校验通过。"
-        else
-            red " [致命错误] Sing-box 核心 sha256 校验失败！"
-            red "  期望: $expected_hash"
-            red "  实际: $actual_hash"
-            rm -rf /opt/hy2_tmp/sing-box*
-            return 1
-        fi
-    else
-        if [[ "${HY2_VLESS_REQUIRE_SB_CHECKSUM:-0}" == "1" ]]; then
-            red " [致命错误] HY2_VLESS_REQUIRE_SB_CHECKSUM=1，但未获取到 Sing-box 官方 digest。"
-            rm -rf /opt/hy2_tmp/sing-box*
-            return 1
-        fi
-        yellow "  未获取到 Sing-box 官方 digest，跳过 sha256 校验。"
-    fi
-
-    rm -rf /tmp/sing-box-*-linux-* 2>/dev/null
-    _smart_run "正在解压并装配底层核心" tar -xzf /opt/hy2_tmp/sing-box.tar.gz -C /tmp/ || { red " [致命错误] Sing-box 核心解压失败！"; return 1; }
-    local extract_dir=$(find /tmp/ -type d -name "sing-box-*-linux-${sb_arch}" | head -n 1)
-    if [[ -n "$extract_dir" && -f "$extract_dir/sing-box" ]]; then
-        mv -f "$extract_dir/sing-box" /usr/local/bin/sing-box
-        chmod +x /usr/local/bin/sing-box
-        green "  [✔] Sing-box ($sb_version | $sb_arch) 核心已恢复。"
-        rm -rf /opt/hy2_tmp/sing-box*
-        return 0
-    fi
-
-    red " [致命错误] Sing-box 核心解压后未找到二进制文件。"
-    rm -rf /opt/hy2_tmp/sing-box*
+  if [[ -L "$install_path" ]]; then
+    red " [致命错误] $install_path 不能是符号链接。"
     return 1
-}
+  fi
+
+  local required_command
+
+  for required_command in \
+    curl \
+    jq \
+    sha256sum \
+    tar \
+    awk \
+    install \
+    mktemp
+  do
+    if ! command -v "$required_command" \
+      >/dev/null 2>&1
+    then
+      red " [致命错误] 缺少必要命令：$required_command"
+      return 1
+    fi
+  done
+
+  if [[ -L /opt/hy2_tmp ]]; then
+    red " [致命错误] /opt/hy2_tmp 不能是符号链接。"
+    return 1
+  fi
+
+  install -d -m 700 /opt/hy2_tmp || {
+    red " [致命错误] 无法创建安全下载目录。"
+    return 1
+  }
+
+  chmod 700 /opt/hy2_tmp || return 1
+
+  work_dir=$(
+    mktemp -d /opt/hy2_tmp/sing-box-install.XXXXXX
+  ) || {
+    red " [致命错误] 无法创建 Sing-box 私有工作目录。"
+    return 1
+  }
+
+  trap '
+    rm -rf -- "$work_dir"
+
+    if [[ -n "${install_tmp:-}" ]]; then
+      rm -f -- "$install_tmp"
+    fi
+  ' EXIT
+
+  release_json="$work_dir/release.json"
+  archive="$work_dir/sing-box.tar.gz"
+  archive_list="$work_dir/archive.list"
+  extract_root="$work_dir/extracted"
+
+  yellow " 正在从 Sing-box 官方 GitHub API 获取最新稳定版本……"
+
+  if ! curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --proto '=https' \
+    --tlsv1.2 \
+    --connect-timeout 10 \
+    --max-time 30 \
+    --retry 2 \
+    --retry-delay 1 \
+    "$api_url" \
+    --output "$release_json"
+  then
+    red " [致命错误] 无法获取 Sing-box 官方发布信息。"
+    return 1
+  fi
+
+  if ! jq -e \
+    '.tag_name and (.assets | type == "array")' \
+    "$release_json" \
+    >/dev/null
+  then
+    red " [致命错误] Sing-box 官方发布信息格式无效。"
+    return 1
+  fi
+
+  sb_version=$(
+    jq -r '.tag_name // empty' "$release_json"
+  )
+
+  if [[ ! "$sb_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+    red " [致命错误] Sing-box 版本号格式异常：$sb_version"
+    return 1
+  fi
+
+  arch="$(uname -m)"
+
+  case "$arch" in
+    x86_64|amd64)
+      sb_arch="amd64"
+      ;;
+
+    aarch64|arm64)
+      sb_arch="arm64"
+      ;;
+
+    armv7*|armv6*)
+      sb_arch="armv7"
+      ;;
+
+    i386|i686)
+      sb_arch="386"
+      ;;
+
+    s390x)
+      sb_arch="s390x"
+      ;;
+
+    *)
+      red " [致命错误] Sing-box 暂不支持该 CPU 架构：$arch"
+      return 1
+      ;;
+  esac
+
+  sb_asset="sing-box-${sb_version#v}-linux-${sb_arch}.tar.gz"
+
+  official_url="$(
+    printf '%s' \
+      "https://github.com/SagerNet/sing-box/releases/download/" \
+      "${sb_version}/" \
+      "${sb_asset}"
+  )"
+
+  api_asset_url=$(
+    jq -r \
+      --arg name "$sb_asset" \
+      '
+        .assets[]
+        | select(.name == $name)
+        | .browser_download_url // empty
+      ' \
+      "$release_json" |
+      head -n1
+  )
+
+  expected_digest=$(
+    jq -r \
+      --arg name "$sb_asset" \
+      '
+        .assets[]
+        | select(.name == $name)
+        | .digest // empty
+      ' \
+      "$release_json" |
+      head -n1
+  )
+
+  if [[ "$api_asset_url" != "$official_url" ]]; then
+    red " [致命错误] 官方 API 返回了非预期下载地址。"
+    red " 预期：$official_url"
+    red " 实际：$api_asset_url"
+    return 1
+  fi
+
+  if [[ ! "$expected_digest" =~ ^sha256:[0-9a-fA-F]{64}$ ]]
+  then
+    red " [致命错误] 官方发布资产缺少有效 SHA-256 digest。"
+    red " [安全策略] 未校验的 Sing-box 核心不会被安装。"
+    return 1
+  fi
+
+  expected_hash="${expected_digest#sha256:}"
+  expected_hash="${expected_hash,,}"
+
+  yellow " 目标版本：$sb_version ($sb_arch)"
+  yellow " 正在从 Sing-box 官方 GitHub Release 下载……"
+
+  if ! curl \
+    --fail \
+    --show-error \
+    --location \
+    --proto '=https' \
+    --tlsv1.2 \
+    --connect-timeout 15 \
+    --max-time 180 \
+    --retry 3 \
+    --retry-delay 2 \
+    "$official_url" \
+    --output "$archive"
+  then
+    red " [致命错误] Sing-box 官方核心下载失败。"
+    return 1
+  fi
+
+  if [[ ! -s "$archive" ]]; then
+    red " [致命错误] 下载到的 Sing-box 压缩包为空。"
+    return 1
+  fi
+
+  actual_hash=$(
+    sha256sum "$archive" |
+      awk '{print tolower($1)}'
+  )
+
+  if [[ "$actual_hash" != "$expected_hash" ]]; then
+    red " [致命错误] Sing-box SHA-256 校验失败。"
+    red " 期望：$expected_hash"
+    red " 实际：$actual_hash"
+    return 1
+  fi
+
+  green " [✔] Sing-box 官方 SHA-256 校验通过。"
+
+  if ! tar -tzf "$archive" > "$archive_list"; then
+    red " [致命错误] 无法读取 Sing-box 压缩包目录。"
+    return 1
+  fi
+
+  # 拒绝绝对路径、父目录穿越和空文件名。
+  if awk '
+    BEGIN {
+      bad = 0
+    }
+
+    /^$/ {
+      bad = 1
+    }
+
+    /^\// {
+      bad = 1
+    }
+
+    /(^|\/)\.\.(\/|$)/ {
+      bad = 1
+    }
+
+    END {
+      exit bad ? 0 : 1
+    }
+  ' "$archive_list"
+  then
+    red " [致命错误] Sing-box 压缩包包含不安全路径。"
+    return 1
+  fi
+
+  # 拒绝符号链接和硬链接，避免解压时越界写入。
+  if tar -tvzf "$archive" |
+    awk '
+      $1 ~ /^[lh]/ {
+        found = 1
+      }
+
+      END {
+        exit found ? 0 : 1
+      }
+    '
+  then
+    red " [致命错误] Sing-box 压缩包包含链接条目。"
+    return 1
+  fi
+
+  mkdir -p "$extract_root" || return 1
+  chmod 700 "$extract_root" || return 1
+
+  if ! tar -xzf "$archive" -C "$extract_root"; then
+    red " [致命错误] Sing-box 核心解压失败。"
+    return 1
+  fi
+
+  extract_dir="$extract_root/sing-box-${sb_version#v}-linux-${sb_arch}"
+  candidate="$extract_dir/sing-box"
+
+  if [[ ! -f "$candidate" ||
+        -L "$candidate" ]]
+  then
+    red " [致命错误] 压缩包中未找到安全的 Sing-box 二进制。"
+    return 1
+  fi
+
+  chmod 755 "$candidate" || return 1
+
+  if ! "$candidate" version >/dev/null 2>&1; then
+    red " [致命错误] 解压后的 Sing-box 二进制自检失败。"
+    return 1
+  fi
+
+  install_tmp=$(
+    mktemp /usr/local/bin/.sing-box.new.XXXXXX
+  ) || {
+    red " [致命错误] 无法创建二进制原子安装文件。"
+    return 1
+  }
+
+  if ! install -m 0755 "$candidate" "$install_tmp"; then
+    red " [致命错误] 无法准备新的 Sing-box 二进制。"
+    return 1
+  fi
+
+  if ! "$install_tmp" version >/dev/null 2>&1; then
+    red " [致命错误] 待安装的 Sing-box 二进制自检失败。"
+    return 1
+  fi
+
+  if [[ -e "$install_path" ]]; then
+    previous_binary="$work_dir/sing-box.previous"
+
+    if ! cp -a -- "$install_path" "$previous_binary"; then
+      red " [致命错误] 无法备份现有 Sing-box 二进制。"
+      return 1
+    fi
+  fi
+
+  if ! mv -f -- "$install_tmp" "$install_path"; then
+    red " [致命错误] 无法原子替换 Sing-box 二进制。"
+    return 1
+  fi
+
+  install_tmp=""
+
+  if ! "$install_path" version >/dev/null 2>&1; then
+    red " [致命错误] 新 Sing-box 安装后自检失败，正在回滚。"
+
+    rm -f -- "$install_path"
+
+    if [[ -f "$previous_binary" ]]; then
+      cp -a -- "$previous_binary" "$install_path" || true
+    fi
+
+    return 1
+  fi
+
+  green " [✔] Sing-box ($sb_version | $sb_arch) 已安全安装。"
+  return 0
+)
 
 normalize_singbox_config() {
     migrate_legacy_dns_config
