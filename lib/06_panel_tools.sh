@@ -1094,6 +1094,7 @@ set_node_expiration() {
     clear
     print_line
     green " 设置 / 延长节点有效期 (定时停用看门狗) "
+    echo -e "  \033[1;32m[88]\033[0m 修改节点通信端口 (热重载)"
     print_line
     echo ""
     
@@ -1173,7 +1174,7 @@ config_modify_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6, 88]: ${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
@@ -1183,6 +1184,9 @@ config_modify_menu() {
             4) enable_hy2_port_hopping ;;
             5) modify_node_name ;;
             6) set_node_expiration ;;
+            88)
+                _modify_node_port
+                ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
@@ -1824,3 +1828,40 @@ show_warp_ipv6_route() {
     read temp
 }
 
+
+# --- V1.6.8 端口动态跃迁后端数据同步链 ---
+_modify_node_port() {
+    echo ""
+    echo -e "  \033[1;36m▶ 启动端口动态跃迁机制...\033[0m"
+    echo -e "  \033[1;33m⚠️ 注意：修改端口会同步刷新 Nginx 在线订阅文件及终端生成的明文链接！\033[0m"
+    echo ""
+    read -p "  请输入全新节点通信端口 (10000-65535) [直接回车取消]: " new_port
+    
+    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then
+        echo "  [i] 操作已取消。"
+        return 0
+    fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000 到 65535 之间的纯数字！\033[0m"
+        return 1
+    fi
+    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
+        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被当前系统占用！\033[0m"
+        return 1
+    fi
+
+    if [ -f /etc/sing-box/config.json ]; then
+        jq '(.inbounds[] | select(.type=="vless" or .type=="hysteria2") | .listen_port) = '$new_port'' /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
+    fi
+    if [ -d /etc/hy2-vless ]; then
+        find /etc/hy2-vless/ -type f -exec sed -i "s/^PORT=.*/PORT=$new_port/g" {} + 2>/dev/null || true
+        find /etc/hy2-vless/ -type f -exec sed -i "s/^port=.*/port=$new_port/g" {} + 2>/dev/null || true
+    fi
+    if command -v systemctl >/dev/null 2>&1; then 
+        systemctl restart sing-box >/dev/null 2>&1
+    fi
+    
+    echo -e "  \033[1;32m[✔] 成功！通信端口已平滑跃迁至 [ $new_port ]，订阅已全自适应同步！\033[0m"
+    echo ""
+    read -n 1 -s -r -p "按任意键返回..."
+}
