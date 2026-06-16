@@ -815,24 +815,227 @@ check_singbox_config() {
     return 0
 }
 
+SINGBOX_CONFIG_TX_BACKUP=""
+SINGBOX_CONFIG_TX_HAD_FILE=0
+SINGBOX_CONFIG_TX_SERVICE_WAS_ACTIVE=0
+
+_reset_singbox_config_transaction() {
+  SINGBOX_CONFIG_TX_BACKUP=""
+  SINGBOX_CONFIG_TX_HAD_FILE=0
+  SINGBOX_CONFIG_TX_SERVICE_WAS_ACTIVE=0
+}
+
+_begin_singbox_config_transaction() {
+  local backup=""
+
+  if [[ -n "$SINGBOX_CONFIG_TX_BACKUP" ]]; then
+    rm -f -- "$SINGBOX_CONFIG_TX_BACKUP"
+  fi
+
+  _reset_singbox_config_transaction
+
+  if [[ -L /etc/sing-box ]]; then
+    red " [错误] /etc/sing-box 不能是符号链接。"
+    return 1
+  fi
+
+  install -d -m 700 /etc/sing-box ||
+    return 1
+
+  if is_svc_active sing-box; then
+    SINGBOX_CONFIG_TX_SERVICE_WAS_ACTIVE=1
+  fi
+
+  if [[ -e /etc/sing-box/config.json ]]; then
+    if [[ -L /etc/sing-box/config.json ||
+          ! -f /etc/sing-box/config.json ]]
+    then
+      red " [错误] config.json 必须是普通文件。"
+      return 1
+    fi
+
+    backup=$(
+      mktemp \
+        /etc/sing-box/.config.rollback.XXXXXX
+    ) || return 1
+
+    if ! cp -a -- \
+      /etc/sing-box/config.json \
+      "$backup"
+    then
+      rm -f -- "$backup"
+      return 1
+    fi
+
+    chmod 600 "$backup" || {
+      rm -f -- "$backup"
+      return 1
+    }
+
+    SINGBOX_CONFIG_TX_BACKUP="$backup"
+    SINGBOX_CONFIG_TX_HAD_FILE=1
+  fi
+
+  return 0
+}
+
+_restore_singbox_config_transaction() {
+  local restore_rc=0
+
+  if [[ "$SINGBOX_CONFIG_TX_HAD_FILE" -eq 1 ]]; then
+    if [[ -z "$SINGBOX_CONFIG_TX_BACKUP" ||
+          ! -f "$SINGBOX_CONFIG_TX_BACKUP" ]]
+    then
+      red " [错误] 配置回滚文件不存在。"
+      return 1
+    fi
+
+    if ! install -m 600 \
+      "$SINGBOX_CONFIG_TX_BACKUP" \
+      /etc/sing-box/config.json
+    then
+      restore_rc=1
+    fi
+  else
+    rm -f -- /etc/sing-box/config.json
+  fi
+
+  if [[ -n "$SINGBOX_CONFIG_TX_BACKUP" ]]; then
+    rm -f -- "$SINGBOX_CONFIG_TX_BACKUP"
+  fi
+
+  _reset_singbox_config_transaction
+
+  return "$restore_rc"
+}
+
+_commit_singbox_config_transaction() {
+  local candidate=""
+
+  if [[ -f /etc/sing-box/config.json ]]; then
+    candidate=$(
+      mktemp \
+        /etc/sing-box/.config.last-good.XXXXXX
+    ) || return 1
+
+    if ! cp -a -- \
+      /etc/sing-box/config.json \
+      "$candidate"
+    then
+      rm -f -- "$candidate"
+      return 1
+    fi
+
+    chmod 600 "$candidate" || {
+      rm -f -- "$candidate"
+      return 1
+    }
+
+    if ! mv -f -- \
+      "$candidate" \
+      /etc/sing-box/config.json.last-known-good
+    then
+      rm -f -- "$candidate"
+      return 1
+    fi
+  fi
+
+  if [[ -n "$SINGBOX_CONFIG_TX_BACKUP" ]]; then
+    rm -f -- "$SINGBOX_CONFIG_TX_BACKUP"
+  fi
+
+  _reset_singbox_config_transaction
+}
+
+_abort_singbox_config_update() {
+  local reason="${1:-配置修改失败}"
+
+  red " [错误] $reason，正在恢复修改前配置。"
+
+  if _restore_singbox_config_transaction; then
+    yellow " [回滚] 已恢复修改前的 Sing-box 配置。"
+  else
+    red " [错误] Sing-box 配置自动恢复失败。"
+  fi
+
+  return 1
+}
+
 restart_singbox_checked() {
-    check_singbox_config || return 1
-    if is_svc_active sing-box; then
-        svc_restart sing-box
+  local service_was_active=0
+  local restart_ok=1
+
+  service_was_active="$SINGBOX_CONFIG_TX_SERVICE_WAS_ACTIVE"
+
+  if ! check_singbox_config; then
+    _abort_singbox_config_update \
+      "Sing-box 配置校验失败"
+
+    return 1
+  fi
+
+  if [[ "$service_was_active" -eq 1 ]]; then
+    if ! svc_restart sing-box; then
+      restart_ok=0
+    fi
+  else
+    if ! svc_start sing-box; then
+      restart_ok=0
+    fi
+  fi
+
+  sleep 1
+
+  if [[ "$restart_ok" -ne 1 ]] ||
+     ! is_svc_active sing-box
+  then
+    red " [错误] Sing-box 新配置启动失败。"
+
+    if [[ "$SYSTEM" == "Alpine" ]]; then
+      tail -n 80 /var/log/sing-box.log \
+        2>/dev/null || true
     else
-        svc_start sing-box
+      journalctl \
+        -u sing-box \
+        -n 80 \
+        --no-pager \
+        2>/dev/null || true
     fi
-    sleep 1
-    if ! is_svc_active sing-box; then
-        red "  [✘] Sing-box 启动失败。最近日志如下："
-        if [[ $SYSTEM == "Alpine" ]]; then
-            tail -n 80 /var/log/sing-box.log 2>/dev/null || true
-        else
-            journalctl -u sing-box -n 80 --no-pager 2>/dev/null || true
-        fi
-        return 1
+
+    if ! _restore_singbox_config_transaction; then
+      red " [错误] 无法恢复修改前配置。"
+      return 1
     fi
-    return 0
+
+    yellow " [回滚] 已恢复修改前配置。"
+
+    if [[ "$service_was_active" -eq 1 ]]; then
+      if check_singbox_config >/dev/null 2>&1 &&
+         (
+           svc_restart sing-box \
+             >/dev/null 2>&1 ||
+           svc_start sing-box \
+             >/dev/null 2>&1
+         )
+      then
+        green " [回滚] 原 Sing-box 服务已恢复运行。"
+      else
+        red " [错误] 原配置已恢复，但服务重新启动失败。"
+      fi
+    else
+      svc_stop sing-box >/dev/null 2>&1 || true
+    fi
+
+    return 1
+  fi
+
+  if ! _commit_singbox_config_transaction; then
+    red " [错误] 无法保存最后可用配置快照。"
+    return 1
+  fi
+
+  green " [✔] Sing-box 新配置已生效并保存为最后可用版本。"
+  return 0
 }
 
 inst_hysteria2() {
@@ -877,6 +1080,11 @@ echo ""
     local listen_addr="::"
     [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
 
+  if ! _begin_singbox_config_transaction; then
+    red " [错误] 无法创建配置事务备份。"
+    return 1
+  fi
+
     jq --arg p "$port" --arg pwd "$auth_pwd" --arg cp "/etc/sing-box/cert.crt" --arg kp "/etc/sing-box/private.key" --arg listen "$listen_addr" '
     .inbounds += [{
       "type": "hysteria2",
@@ -885,14 +1093,25 @@ echo ""
       "listen_port": ($p | tonumber),
       "users": [{"password": $pwd}],
       "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
-    }]' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json
+    }]' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json || {
+    _abort_singbox_config_update "生成新 Sing-box 配置失败"
+    return 1
+  }
     
     if [[ -n "$obfs_pwd" ]]; then
-        jq --arg obfs "$obfs_pwd" '( .inbounds[] | select(.tag=="hy2-in") ) += { "obfs": {"type": "salamander", "password": $obfs} }' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json
+        jq --arg obfs "$obfs_pwd" '( .inbounds[] | select(.tag=="hy2-in") ) += { "obfs": {"type": "salamander", "password": $obfs} }' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json || {
+    _abort_singbox_config_update "生成新 Sing-box 配置失败"
+    return 1
+  }
     fi
     
     chmod 600 /etc/sing-box/config.json
-    svc_enable sing-box
+    if ! svc_enable sing-box; then
+    _abort_singbox_config_update \
+      "无法启用 Sing-box 服务"
+
+    return 1
+  fi
     restart_singbox_checked || return 1
     generate_client_configs
     
@@ -944,6 +1163,11 @@ echo ""
     [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
 
     yellow "  正在写入 VLESS Reality 推荐参数：Vision + Reality + TCP Fast Open + 自适应监听..."
+  if ! _begin_singbox_config_transaction; then
+    red " [错误] 无法创建配置事务备份。"
+    return 1
+  fi
+
     jq --arg p "$port" --arg uuid "$v_uuid" --arg priv "$v_private_key" --arg sid "$v_short_id" --arg sni "$v_sni" --arg listen "$listen_addr" '
     .inbounds += [{
       "type": "vless",
@@ -962,10 +1186,18 @@ echo ""
           "short_id": [$sid]
         }
       }
-    }]' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json
+    }]' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json || {
+    _abort_singbox_config_update "生成新 Sing-box 配置失败"
+    return 1
+  }
     
     chmod 600 /etc/sing-box/config.json
-    svc_enable sing-box
+    if ! svc_enable sing-box; then
+    _abort_singbox_config_update \
+      "无法启用 Sing-box 服务"
+
+    return 1
+  fi
     restart_singbox_checked || return 1
     generate_client_configs
     
