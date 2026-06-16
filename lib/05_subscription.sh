@@ -108,8 +108,8 @@ generate_client_configs() {
     local url_all=""
     local proxy_yaml=""
     local proxy_names=""
-    local sb_outbounds=""
-    local sb_tags=""
+    local sb_outbounds='[]'
+    local sb_tags='[]'
 
     local yaml_json_ip="$(get_sub_ip)"
     local uri_ip="$(get_sub_ip)"
@@ -184,14 +184,80 @@ generate_client_configs() {
         proxy_names="${proxy_names}
       - '${yaml_node_name}'"
         
-        local sb_hy2_port_json="\"server_port\":${bind_port}"
-        [[ -n "$hop_ports" ]] && sb_hy2_port_json="\"server_port\":${bind_port},\"server_ports\":[\"${hop_ports}\"]"
-        local sb_hy2_json="{\"type\":\"hysteria2\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",${sb_hy2_port_json},\"password\":\"${pwd}\",\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"insecure\":true,\"certificate_public_key_sha256\":[\"${spki_pin}\"],\"alpn\":[\"h3\"]}"
-        [[ -n "$obfs" ]] && sb_hy2_json="${sb_hy2_json},\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfs}\"}"
-        sb_hy2_json="${sb_hy2_json}}"
-        
-        sb_outbounds="${sb_outbounds}${sb_hy2_json},"
-        sb_tags="${sb_tags}\"${node_name}\","
+
+        local sb_hy2_json=""
+
+        if ! sb_hy2_json=$(
+          jq -cn \
+            --arg tag "$node_name" \
+            --arg server "$yaml_json_ip" \
+            --argjson port "$bind_port" \
+            --arg hop_ports "$hop_ports" \
+            --arg password "$pwd" \
+            --arg sni "$sni" \
+            --arg spki_pin "$spki_pin" \
+            --arg obfs "$obfs" \
+            '
+              {
+                type: "hysteria2",
+                tag: $tag,
+                server: $server,
+                server_port: $port,
+                password: $password,
+                tls: {
+                  enabled: true,
+                  server_name: $sni,
+                  insecure: true,
+                  certificate_public_key_sha256: [
+                    $spki_pin
+                  ],
+                  alpn: ["h3"]
+                }
+              }
+              + (
+                if $hop_ports != ""
+                then {
+                  server_ports: [$hop_ports]
+                }
+                else {}
+                end
+              )
+              + (
+                if $obfs != ""
+                then {
+                  obfs: {
+                    type: "salamander",
+                    password: $obfs
+                  }
+                }
+                else {}
+                end
+              )
+            '
+        ); then
+          red " [错误] 无法生成 Hysteria2 客户端 JSON。"
+          return 1
+        fi
+
+        if ! sb_outbounds=$(
+          jq -cn \
+            --argjson current "$sb_outbounds" \
+            --argjson item "$sb_hy2_json" \
+            '$current + [$item]'
+        ); then
+          red " [错误] 无法聚合 Hysteria2 客户端配置。"
+          return 1
+        fi
+
+        if ! sb_tags=$(
+          jq -cn \
+            --argjson current "$sb_tags" \
+            --arg tag "$node_name" \
+            '$current + [$tag]'
+        ); then
+          red " [错误] 无法聚合 Hysteria2 节点标签。"
+          return 1
+        fi
     fi
 
     # ================= 聚合: VLESS =================
@@ -243,13 +309,69 @@ generate_client_configs() {
         proxy_names="${proxy_names}
       - '${yaml_node_name}'"
         
-        local sb_vless_json="{\"type\":\"vless\",\"tag\":\"${node_name}\",\"server\":\"${yaml_json_ip}\",\"server_port\":${bind_port},\"uuid\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"packet_encoding\":\"xudp\",\"tcp_fast_open\":true,\"tls\":{\"enabled\":true,\"server_name\":\"${sni}\",\"utls\":{\"enabled\":true,\"fingerprint\":\"chrome\"},\"reality\":{\"enabled\":true,\"public_key\":\"${pub}\",\"short_id\":\"${sid}\"}}}"
-        sb_outbounds="${sb_outbounds}${sb_vless_json},"
-        sb_tags="${sb_tags}\"${node_name}\","
+
+        local sb_vless_json=""
+
+        if ! sb_vless_json=$(
+          jq -cn \
+            --arg tag "$node_name" \
+            --arg server "$yaml_json_ip" \
+            --argjson port "$bind_port" \
+            --arg uuid "$uuid" \
+            --arg sni "$sni" \
+            --arg public_key "$pub" \
+            --arg short_id "$sid" \
+            '
+              {
+                type: "vless",
+                tag: $tag,
+                server: $server,
+                server_port: $port,
+                uuid: $uuid,
+                flow: "xtls-rprx-vision",
+                packet_encoding: "xudp",
+                tcp_fast_open: true,
+                tls: {
+                  enabled: true,
+                  server_name: $sni,
+                  utls: {
+                    enabled: true,
+                    fingerprint: "chrome"
+                  },
+                  reality: {
+                    enabled: true,
+                    public_key: $public_key,
+                    short_id: $short_id
+                  }
+                }
+              }
+            '
+        ); then
+          red " [错误] 无法生成 VLESS 客户端 JSON。"
+          return 1
+        fi
+
+        if ! sb_outbounds=$(
+          jq -cn \
+            --argjson current "$sb_outbounds" \
+            --argjson item "$sb_vless_json" \
+            '$current + [$item]'
+        ); then
+          red " [错误] 无法聚合 VLESS 客户端配置。"
+          return 1
+        fi
+
+        if ! sb_tags=$(
+          jq -cn \
+            --argjson current "$sb_tags" \
+            --arg tag "$node_name" \
+            '$current + [$tag]'
+        ); then
+          red " [错误] 无法聚合 VLESS 节点标签。"
+          return 1
+        fi
     fi
 
-    sb_outbounds="${sb_outbounds%,}"
-    sb_tags="${sb_tags%,}"
 
     # 修复 Bug 3：正确输出文本流
   rm -f "$web_dir/$sub_uuid/url.txt"
@@ -283,18 +405,88 @@ $([[ "$yaml_json_ip" == *":"* ]] && echo "  - IP-CIDR6,$yaml_json_ip/128,DIRECT,
   - MATCH,节点选择
 EOF
 
-    cat << EOF > "$web_dir/$sub_uuid/sing-box.json"
-{
-  "outbounds": [
-    { "type": "selector", "tag": "Proxy", "outbounds": ["Auto", $sb_tags] },
-    { "type": "urltest", "tag": "Auto", "outbounds": [$sb_tags] },
-    $sb_outbounds,
-    { "type": "direct", "tag": "direct" },
-    { "type": "block", "tag": "block" },
-    { "type": "dns", "tag": "dns-out" }
-  ]
-}
-EOF
+
+    local singbox_json_tmp=""
+
+    singbox_json_tmp=$(
+      mktemp \
+        "$web_dir/$sub_uuid/.sing-box.json.XXXXXX"
+    ) || {
+      red " [错误] 无法创建客户端 JSON 临时文件。"
+      return 1
+    }
+
+    if ! jq -n \
+      --argjson tags "$sb_tags" \
+      --argjson nodes "$sb_outbounds" \
+      '
+        {
+          outbounds: (
+            [
+              {
+                type: "selector",
+                tag: "Proxy",
+                outbounds: (
+                  ["Auto"] + $tags
+                )
+              },
+              {
+                type: "urltest",
+                tag: "Auto",
+                outbounds: $tags
+              }
+            ]
+            + $nodes
+            + [
+              {
+                type: "direct",
+                tag: "direct"
+              },
+              {
+                type: "block",
+                tag: "block"
+              },
+              {
+                type: "dns",
+                tag: "dns-out"
+              }
+            ]
+          )
+        }
+      ' > "$singbox_json_tmp"
+    then
+      rm -f -- "$singbox_json_tmp"
+      red " [错误] 无法生成最终 Sing-box 客户端配置。"
+      return 1
+    fi
+
+    if ! jq -e '
+      (.outbounds | type == "array")
+      and (.outbounds | length >= 6)
+      and (
+        [.outbounds[].tag]
+        | all(type == "string" and length > 0)
+      )
+    ' "$singbox_json_tmp" >/dev/null
+    then
+      rm -f -- "$singbox_json_tmp"
+      red " [错误] 生成的 Sing-box 客户端 JSON 校验失败。"
+      return 1
+    fi
+
+    chmod 640 "$singbox_json_tmp" || {
+      rm -f -- "$singbox_json_tmp"
+      return 1
+    }
+
+    if ! mv -f -- \
+      "$singbox_json_tmp" \
+      "$web_dir/$sub_uuid/sing-box.json"
+    then
+      rm -f -- "$singbox_json_tmp"
+      red " [错误] 无法发布 Sing-box 客户端 JSON。"
+      return 1
+    fi
 
     chown -R www-data:www-data "$web_dir" 2>/dev/null || chown -R nginx:nginx "$web_dir" 2>/dev/null
     chmod -R 750 "$web_dir"
