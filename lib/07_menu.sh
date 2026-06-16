@@ -1,5 +1,5 @@
-# V1.5.8_PROBE_FIX
 #!/usr/bin/env bash
+# V1.5.8_PROBE_FIX
 # shellcheck shell=bash
 
 
@@ -23,7 +23,7 @@ main_status_get_public_ipv4() {
     local ip=""
     if command -v curl >/dev/null 2>&1; then
         ip=$(curl -fsSLk -m 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
-        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api.ipify.org 2 --retry 2 --connect-timeout 6 >/dev/null | tr -d '[:space:]')
+        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api.ipify.org 2 --retry 2 --connect-timeout 6 2>/dev/null | tr -d '[:space:]')
     fi
     if [[ -z "$ip" || ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v wget >/dev/null 2>&1; then
         ip=$(wget -qO- -T 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
@@ -333,7 +333,7 @@ main_realtime_status_panel() {
     # 直连 IP 终极高压补位系统
     local disp_v4="${clean_ipv4}"
     if [[ -z "$disp_v4" || "$disp_v4" == "检测超时"* ]]; then
-        disp_v4=$(curl -fsS4m2 https://api.ipify.org 2 --retry 2 --connect-timeout 6 >/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
+        disp_v4=$(curl -fsS4m2 https://api.ipify.org 2 --retry 2 --connect-timeout 6 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
         [[ -z "$disp_v4" ]] && disp_v4="未知本机IP"
     fi
 
