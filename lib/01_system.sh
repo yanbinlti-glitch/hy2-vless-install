@@ -58,10 +58,10 @@ _smart_run() {
     trap - SIGINT # 任务正常结束，解除拦截
     
     if [ $exit_code -eq 0 ]; then
-        printf "[1;32m[✔] 完成！      [0m
+        printf "[1;32m[✔] 成功！      [0m
 "
     else
-        printf "[1;31m[✘] 失败！(错误日志已保存至 /tmp/run_task.log)[0m
+        printf "[1;31m[✘] 失败！(日志存至 /tmp/run_task.log)[0m
 "
     fi
     return $exit_code
@@ -126,12 +126,11 @@ _smart_install() {
     fi
 
     if [ $exit_code -eq 0 ]; then
-        printf "[1;32m[✔] 安装完成！      [0m
+        printf "[1;32m[✔] 成功！      [0m
 "
     else
-        printf "[1;31m[✘] 安装失败！详见 /tmp/pkg.log[0m
+        printf "[1;31m[✘] 失败！(日志存至 /tmp/run_task.log)[0m
 "
-        cat /tmp/pkg.log | tail -n 3
     fi
 }
 

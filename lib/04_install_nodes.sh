@@ -234,7 +234,7 @@ EOF
 }
 LOGEOF
         chmod 600 /etc/sing-box/config.json /etc/sing-box/*.crt /etc/sing-box/*.key 2>/dev/null || true
-        systemctl daemon-reload
+        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload
     fi
 
     # 注入后台幽灵清道夫 (每天凌晨 4 点智能清理极限小鸡缓存)
@@ -260,7 +260,7 @@ CLEANEOF
     if [[ -f /etc/systemd/system/sing-box.service ]]; then
         sed -i "s/GOMEMLIMIT=50MiB/GOMEMLIMIT=$sys_gomem/g" /etc/systemd/system/sing-box.service
         sed -i "s/GOGC=20/GOGC=$sys_gogc/g" /etc/systemd/system/sing-box.service
-        systemctl daemon-reload 2>/dev/null || true
+        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 2
     fi
 }
 

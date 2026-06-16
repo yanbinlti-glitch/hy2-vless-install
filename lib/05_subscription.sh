@@ -289,7 +289,7 @@ clean_env() {
         rm -f /etc/init.d/sing-box
     else
         rm -f /etc/systemd/system/sing-box.service
-        systemctl daemon-reload
+        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload
     fi
     save_iptables
 

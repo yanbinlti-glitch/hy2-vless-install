@@ -902,8 +902,8 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 SYSTEMD
-        systemctl daemon-reload >/dev/null 2>&1 || true
-        systemctl enable --now hy2-port-hop.service >/dev/null 2>&1 || true
+        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 
+        _smart_run "正在重载系统级守护进程配置" systemctl enable --now hy2-port-hop.service
     fi
 }
 
@@ -923,7 +923,7 @@ disable_hy2_port_hopping() {
     else
         systemctl disable --now hy2-port-hop.service >/dev/null 2>&1 || true
         rm -f /etc/systemd/system/hy2-port-hop.service
-        systemctl daemon-reload >/dev/null 2>&1 || true
+        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 
     fi
 
     rm -f /usr/local/bin/hy2-port-hop-apply
@@ -1353,7 +1353,7 @@ install_or_repair_warp_ipv6_iface() {
     yellow " 正在安装依赖: curl jq wireguard-tools iproute2 ca-certificates..."
 
     if command -v apt-get >/dev/null 2>&1; then
-        apt-get update
+        _smart_run "正在极速同步全局软件源索引" apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq wireguard-tools iproute2 ca-certificates && pkg_ok=1
     elif command -v dnf >/dev/null 2>&1; then
         dnf install -y curl jq wireguard-tools iproute ca-certificates && pkg_ok=1
@@ -1509,7 +1509,7 @@ install_or_repair_warp_ipv6_iface() {
     fi
 
     if command -v systemctl >/dev/null 2>&1; then
-        systemctl enable "wg-quick@${iface}" >/dev/null 2>&1 || true
+        _smart_run "正在重载系统级守护进程配置" systemctl enable "wg-quick@${iface}"
     elif command -v rc-update >/dev/null 2>&1; then
         rc-update add wireguard default >/dev/null 2>&1 || true
     fi
