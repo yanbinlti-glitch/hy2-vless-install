@@ -81,33 +81,116 @@ switch_system_source_auto() {
 }
 
 auto_source_guard() {
-    echo ""
-    print_line
-    green "                  软件源智能探测与防卡死保护                  "
-    print_line
-    echo ""
-    yellow "  正在限时检测默认软件源连通性，异常时将自动切换镜像源..."
+  local probe_cmd=""
+  local probe_dir="${HY2_VLESS_SOURCE_PROBE_DIR:-/var/log/hy2-vless-install}"
+  local probe_log=""
 
-    local probe_cmd
-    probe_cmd="$(pkg_update_fast_cmd)"
-    if run_logged_with_timeout 35 /tmp/singbox_source_probe.log "$probe_cmd"; then
-        green "  [✔] 默认软件源可用，继续保留系统当前源。"
-        SOURCE_UPDATED=1
-        return 0
-    fi
+  # 清除参数展开产生的格式空白。
+  probe_dir="$(
+    printf '%s' "$probe_dir" |
+      tr -d '\r\n'
+  )"
 
-    yellow "  默认软件源检测失败或超时，已触发自动换源兜底。"
-    switch_system_source_auto
+  echo ""
+  print_line green " 软件源连通性检测 "
+  print_line
+  echo ""
 
-    if run_logged_with_timeout 45 /tmp/singbox_source_probe.log "$probe_cmd"; then
-        green "  [✔] 镜像源刷新成功。"
-        SOURCE_UPDATED=1
-        return 0
-    fi
+  case "$probe_dir" in
+    /*)
+      ;;
 
-    red "  [错误] 镜像源刷新仍失败，最近日志如下："
-    tail -n 30 /tmp/singbox_source_probe.log 2>/dev/null || true
+    *)
+      red " [错误] 软件源探测日志目录必须是绝对路径。"
+      return 1
+      ;;
+  esac
+
+  if [[ -L "$probe_dir" ]]; then
+    red " [错误] 软件源探测日志目录不能是符号链接：$probe_dir"
     return 1
+  fi
+
+  if ! install -d -m 700 "$probe_dir"; then
+    red " [错误] 无法创建软件源探测日志目录：$probe_dir"
+    return 1
+  fi
+
+  chmod 700 "$probe_dir" || return 1
+
+  probe_log="$probe_dir/source-probe.$$.log"
+
+  if [[ -e "$probe_log" || -L "$probe_log" ]]; then
+    red " [错误] 软件源探测日志路径已存在：$probe_log"
+    return 1
+  fi
+
+  : > "$probe_log" || return 1
+  chmod 600 "$probe_log" || {
+    rm -f -- "$probe_log"
+    return 1
+  }
+
+  yellow " 正在限时检测当前系统软件源连通性……"
+
+  probe_cmd="$(pkg_update_fast_cmd)"
+
+  if run_logged_with_timeout \
+    35 \
+    "$probe_log" \
+    "$probe_cmd"
+  then
+    green " [✔] 当前系统软件源可用，保留现有配置。"
+    SOURCE_UPDATED=1
+    rm -f -- "$probe_log"
+    return 0
+  fi
+
+  red " [错误] 当前系统软件源检测失败或超时。"
+
+  if [[ "${HY2_VLESS_ALLOW_SOURCE_SWITCH:-0}" != "1" ]]
+  then
+    yellow " [安全] 未修改任何系统软件源文件。"
+    yellow " [提示] 请先检查网络、DNS 和现有软件源配置。"
+    yellow " [提示] 确认需要自动换源时，可显式设置："
+    yellow " HY2_VLESS_ALLOW_SOURCE_SWITCH=1"
+
+    echo ""
+    yellow " 最近的软件源检测日志："
+    tail -n 30 "$probe_log" 2>/dev/null || true
+
+    rm -f -- "$probe_log"
+    return 1
+  fi
+
+  yellow " [警告] 已显式允许修改系统软件源。"
+  yellow " 正在备份现有配置并切换镜像源……"
+
+  if ! switch_system_source_auto; then
+    red " [错误] 系统软件源切换失败。"
+    rm -f -- "$probe_log"
+    return 1
+  fi
+
+  if run_logged_with_timeout \
+    45 \
+    "$probe_log" \
+    "$probe_cmd"
+  then
+    green " [✔] 新软件源刷新成功。"
+    SOURCE_UPDATED=1
+    rm -f -- "$probe_log"
+    return 0
+  fi
+
+  red " [错误] 换源后仍无法刷新软件包索引。"
+
+  echo ""
+  yellow " 最近的软件源检测日志："
+  tail -n 30 "$probe_log" 2>/dev/null || true
+
+  rm -f -- "$probe_log"
+  return 1
 }
 
 print_dep_status() {
@@ -137,7 +220,7 @@ check_env() {
     purple "  本步骤会自动完成：软件源探测、依赖补全、二维码组件、Sing-box 核心检查。"
 
     SOURCE_UPDATED=0
-    auto_source_guard || { red " [错误] 软件源刷新失败，请检查 VPS 网络连接！"; exit 1; }
+    auto_source_guard || { red " [错误] 软件源检查失败，系统软件源未被自动修改。"; exit 1; }
 
     echo ""
     print_line
@@ -193,7 +276,7 @@ check_env() {
         echo ""
         yellow "  发现缺失组件，正在自动补全。安装日志将实时显示，不再静默隐藏。"
         if [[ "${SOURCE_UPDATED:-0}" -ne 1 ]]; then
-            auto_source_guard || { red " [错误] 软件源刷新失败！"; exit 1; }
+            auto_source_guard || { red " [错误] 软件源检查失败，系统软件源未被自动修改。"; exit 1; }
         fi
         
         if [[ $SYSTEM == "Alpine" ]]; then
