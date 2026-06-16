@@ -20,35 +20,103 @@ ensure_foundation
 
 
 main_status_get_public_ipv4() {
-    local ip=""
-    if command -v curl >/dev/null 2>&1; then
-        ip=$(curl -fsSLk -m 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
-        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api.ipify.org 2 --retry 2 --connect-timeout 6 2>/dev/null | tr -d '[:space:]')
-    fi
-    if [[ -z "$ip" || ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v wget >/dev/null 2>&1; then
-        ip=$(wget -qO- -T 4 http://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]')
-        [[ -z "$ip" ]] && ip=$(wget -qO- -T 4 http://api.ipify.org 2>/dev/null | tr -d '[:space:]')
-    fi
-    if [[ -z "$ip" || ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i=="src") {print $(i+1); exit}}')
-    fi
-    echo "$ip"
+  local ip=""
+
+  if command -v curl >/dev/null 2>&1; then
+    ip=$(
+      curl \
+        --fail \
+        --silent \
+        --show-error \
+        --location \
+        --ipv4 \
+        --proto '=https' \
+        --tlsv1.2 \
+        --connect-timeout 4 \
+        --max-time 6 \
+        --retry 2 \
+        "https://api.ipify.org" \
+        2>/dev/null ||
+        true
+    )
+  fi
+
+  if [[ -z "$ip" ]] &&
+     command -v wget >/dev/null 2>&1
+  then
+    ip=$(
+      wget \
+        -qO- \
+        -T 6 \
+        "https://api.ipify.org" \
+        2>/dev/null ||
+        true
+    )
+  fi
+
+  ip="$(
+    printf '%s' "$ip" |
+      tr -d '[:space:]'
+  )"
+
+  if [[ "$ip" == *:* ]] ||
+     ! declare -F valid_ip_literal >/dev/null ||
+     ! valid_ip_literal "$ip"
+  then
+    ip=""
+  fi
+
+  printf '%s\n' "$ip"
 }
 
 main_status_get_public_ipv6() {
-    local ip=""
-    if command -v curl >/dev/null 2>&1; then
-        ip=$(curl -fsSLk -m 4 http://ipv6.icanhazip.com 2>/dev/null | tr -d '[:space:]')
-        [[ -z "$ip" ]] && ip=$(curl -fsSLk -m 4 http://api64.ipify.org 2>/dev/null | tr -d '[:space:]')
-    fi
-    if [[ -z "$ip" || ! "$ip" =~ ":" ]] && command -v wget >/dev/null 2>&1; then
-        ip=$(wget -qO- -T 4 http://ipv6.icanhazip.com 2>/dev/null | tr -d '[:space:]')
-        [[ -z "$ip" ]] && ip=$(wget -qO- -T 4 http://api64.ipify.org 2>/dev/null | tr -d '[:space:]')
-    fi
-    if [[ -z "$ip" || ! "$ip" =~ ":" ]]; then
-        ip=$(ip -o -6 addr show scope global 2>/dev/null | awk '$2 != "wgcf" && $2 !~ /warp/i && $4 !~ /^fd/ {split($4,a,"/"); print a[1]; exit}')
-    fi
-    echo "$ip"
+  local ip=""
+
+  if command -v curl >/dev/null 2>&1; then
+    ip=$(
+      curl \
+        --fail \
+        --silent \
+        --show-error \
+        --location \
+        --ipv6 \
+        --proto '=https' \
+        --tlsv1.2 \
+        --connect-timeout 4 \
+        --max-time 6 \
+        --retry 2 \
+        "https://api6.ipify.org" \
+        2>/dev/null ||
+        true
+    )
+  fi
+
+  if [[ -z "$ip" ]] &&
+     command -v wget >/dev/null 2>&1
+  then
+    ip=$(
+      wget \
+        -qO- \
+        -T 6 \
+        "https://api6.ipify.org" \
+        2>/dev/null ||
+        true
+    )
+  fi
+
+  ip="$(
+    printf '%s' "$ip" |
+      tr -d '[:space:]'
+  )"
+
+  if [[ "$ip" != *:* ]] ||
+     ! declare -F valid_ip_literal >/dev/null ||
+     ! valid_ip_literal "$ip"
+  then
+    ip=""
+  fi
+
+  printf '%s\n' "$ip"
 }
 
 main_status_get_warp_iface() {
@@ -142,6 +210,63 @@ main_status_show_node_info() {
 }
 
 
+_menu_fetch_geo() {
+  local proxy_url="${1-}"
+  local response=""
+  local -a curl_args=(
+    --fail
+    --silent
+    --show-error
+    --location
+    --proto '=https'
+    --tlsv1.2
+    --connect-timeout 4
+    --max-time 8
+    --retry 1
+  )
+
+  command -v curl >/dev/null 2>&1 ||
+    return 1
+
+  command -v jq >/dev/null 2>&1 ||
+    return 1
+
+  if [[ -n "$proxy_url" ]]; then
+    curl_args+=(
+      --proxy
+      "$proxy_url"
+    )
+  fi
+
+  response=$(
+    curl \
+      "${curl_args[@]}" \
+      "https://ipwho.is/?lang=zh-CN" \
+      2>/dev/null
+  ) || return 1
+
+  # 转成旧显示代码使用的字段结构。
+  jq -ce '
+    if .success == true
+       and (.ip | type == "string")
+    then
+      {
+        status: "success",
+        query: .ip,
+        country: (.country // ""),
+        city: (.city // ""),
+        isp: (
+          .connection.isp
+          // .isp
+          // ""
+        )
+      }
+    else
+      empty
+    end
+  ' <<< "$response"
+}
+
 main_status_landing_info() {
     if [[ ! -f /etc/sing-box/config.json ]]; then
         echo "未知"
@@ -149,7 +274,7 @@ main_status_landing_info() {
     fi
     local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -z "$has_proxy" || "$has_proxy" == "null" ]]; then
-        local geo=$(curl -fsSLk -m 6 "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(_menu_fetch_geo 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local country=$(echo "$geo" | jq -r '.country')
@@ -168,7 +293,7 @@ main_status_landing_info() {
         local p_tls=$(jq -r '.outbounds[] | select(.tag=="proxy") | .tls.enabled // empty' /etc/sing-box/config.json)
         local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "分流")
         
-        local curl_proxy=""
+        local proxy_url=""
         local proto_prefix="socks5h"
         if [[ "$p_type" == "http" ]]; then
             proto_prefix="http"
@@ -179,11 +304,11 @@ main_status_landing_info() {
         local safe_user=$(jq -nr --arg v "$p_user" '$v|@uri' 2>/dev/null || echo "$p_user")
         local safe_pass=$(jq -nr --arg v "$p_pass" '$v|@uri' 2>/dev/null || echo "$p_pass")
         if [[ -n "$p_user" ]]; then
-            curl_proxy="-x ${proto_prefix}://${safe_user}:${safe_pass}@${safe_server}:${p_port}"
+            proxy_url="${proto_prefix}://${safe_user}:${safe_pass}@${safe_server}:${p_port}"
         else
-            curl_proxy="-x ${proto_prefix}://${safe_server}:${p_port}"
+            proxy_url="${proto_prefix}://${safe_server}:${p_port}"
         fi
-        local geo=$(curl -fsSLk -m 6 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(_menu_fetch_geo "$proxy_url" 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local ip=$(echo "$geo" | jq -r '.query')
@@ -205,7 +330,7 @@ main_status_landing_ip() {
     
     local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -z "$has_proxy" || "$has_proxy" == "null" ]]; then
-        local geo=$(curl -fsSLk -m 6 "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(_menu_fetch_geo 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local ip=$(echo "$geo" | jq -r '.query')
@@ -224,7 +349,7 @@ main_status_landing_ip() {
         local p_tls=$(jq -r '.outbounds[] | select(.tag=="proxy") | .tls.enabled // empty' /etc/sing-box/config.json 2>/dev/null)
         local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "智能分流")
         
-        local curl_proxy=""
+        local proxy_url=""
         local proto_prefix="socks5h"
         if [[ "$p_type" == "http" ]]; then
             proto_prefix="http"
@@ -235,12 +360,12 @@ main_status_landing_ip() {
         local safe_user=$(jq -nr --arg v "$p_user" '$v|@uri' 2>/dev/null || echo "$p_user")
         local safe_pass=$(jq -nr --arg v "$p_pass" '$v|@uri' 2>/dev/null || echo "$p_pass")
         if [[ -n "$p_user" ]]; then
-            curl_proxy="-x ${proto_prefix}://${safe_user}:${safe_pass}@${safe_server}:${p_port}"
+            proxy_url="${proto_prefix}://${safe_user}:${safe_pass}@${safe_server}:${p_port}"
         else
-            curl_proxy="-x ${proto_prefix}://${safe_server}:${p_port}"
+            proxy_url="${proto_prefix}://${safe_server}:${p_port}"
         fi
         
-        local geo=$(curl -fsSLk -m 6 $curl_proxy "http://ip-api.com/json/?lang=zh-CN" 2>/dev/null)
+        local geo=$(_menu_fetch_geo "$proxy_url" 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
         if [[ "$status" == "success" ]]; then
             local ip=$(echo "$geo" | jq -r '.query')
@@ -254,7 +379,22 @@ main_status_landing_ip() {
 }
 
 main_realtime_status_panel() {
-    trap 'rm -f /tmp/hy2_*_$$.tmp 2>/dev/null' RETURN
+    local status_tmp_dir=""
+
+  status_tmp_dir=$(
+    mktemp -d \
+      "${TMPDIR:-/tmp}/hy2-status.XXXXXX"
+  ) || {
+    red " [错误] 无法创建状态面板私有临时目录。"
+    return 1
+  }
+
+  chmod 700 "$status_tmp_dir" || {
+    rm -rf -- "$status_tmp_dir"
+    return 1
+  }
+
+  trap 'rm -rf -- "$status_tmp_dir"' RETURN
     local os_name kernel arch virt bbr ipv4 ipv6 warp_iface warp_ipv6 sb_ver sb_latest svc_text script_ver
 
     os_name=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
@@ -266,13 +406,13 @@ main_realtime_status_panel() {
     bbr=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")
 
     # 异步并发执行耗时网络探测
-    main_status_get_public_ipv4 > /tmp/hy2_ipv4_$$.tmp 2>/dev/null &
+    main_status_get_public_ipv4 > "$status_tmp_dir/ipv4" 2>/dev/null &
     PID1=$!
-    main_status_get_public_ipv6 > /tmp/hy2_ipv6_$$.tmp 2>/dev/null &
+    main_status_get_public_ipv6 > "$status_tmp_dir/ipv6" 2>/dev/null &
     PID2=$!
-    main_status_latest_singbox_version > /tmp/hy2_sblatest_$$.tmp 2>/dev/null &
+    main_status_latest_singbox_version > "$status_tmp_dir/sblatest" 2>/dev/null &
     PID3=$!
-    main_status_landing_ip > /tmp/hy2_landing_$$.tmp 2>/dev/null &
+    main_status_landing_ip > "$status_tmp_dir/landing" 2>/dev/null &
     PID4=$!
     
     ( sleep 6; kill -9 $PID1 $PID2 $PID3 $PID4 >/dev/null 2>&1 ) >/dev/null 2>&1 &
@@ -281,11 +421,11 @@ main_realtime_status_panel() {
     wait $PID1 $PID2 $PID3 $PID4 2>/dev/null
     kill $WATCHDOG_PID >/dev/null 2>&1 || true
 
-    ipv4=$(cat /tmp/hy2_ipv4_$$.tmp 2>/dev/null)
-    ipv6=$(cat /tmp/hy2_ipv6_$$.tmp 2>/dev/null)
-    sb_latest=$(cat /tmp/hy2_sblatest_$$.tmp 2>/dev/null); [[ -z "$sb_latest" ]] && sb_latest="获取失败"
-    local landing_info=$(cat /tmp/hy2_landing_$$.tmp 2>/dev/null); [[ -z "$landing_info" ]] && landing_info="检测超时 (网络黑洞)"
-    rm -f /tmp/hy2_ipv4_$$.tmp /tmp/hy2_ipv6_$$.tmp /tmp/hy2_sblatest_$$.tmp /tmp/hy2_landing_$$.tmp 2>/dev/null
+    ipv4=$(cat "$status_tmp_dir/ipv4" 2>/dev/null)
+    ipv6=$(cat "$status_tmp_dir/ipv6" 2>/dev/null)
+    sb_latest=$(cat "$status_tmp_dir/sblatest" 2>/dev/null); [[ -z "$sb_latest" ]] && sb_latest="获取失败"
+    local landing_info=$(cat "$status_tmp_dir/landing" 2>/dev/null); [[ -z "$landing_info" ]] && landing_info="检测超时 (网络黑洞)"
+    # 私有临时目录由 RETURN trap 统一删除。
     
     warp_iface=$(main_status_get_warp_iface)
     script_ver="${HY2_VLESS_VERSION:-dev}"
@@ -333,7 +473,7 @@ main_realtime_status_panel() {
     # 直连 IP 终极高压补位系统
     local disp_v4="${clean_ipv4}"
     if [[ -z "$disp_v4" || "$disp_v4" == "检测超时"* ]]; then
-        disp_v4=$(curl -fsS4m2 https://api.ipify.org 2 --retry 2 --connect-timeout 6 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
+        disp_v4=$(curl --fail --silent --show-error --location --ipv4 --proto '=https' --tlsv1.2 --max-time 4 --retry 2 --connect-timeout 3 https://api.ipify.org 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
         [[ -z "$disp_v4" ]] && disp_v4="未知本机IP"
     fi
 
@@ -434,54 +574,129 @@ menu() {
 
 # --- V1.6.3 端口动态跃迁与订阅同步引擎 ---
 _modify_node_port() {
-    echo ""
-    echo -e "  \033[1;36m▶ 启动端口动态跃迁机制...\033[0m"
-    echo -e "  \033[1;33m⚠️ 注意：修改端口会同步刷新 Nginx 在线订阅文件及终端生成的明文链接！\033[0m"
-    echo ""
-    read -p "  请输入全新节点通信端口 (10000-65535) [直接回车取消]: " new_port
-    
-    if [ -z "$new_port" ]; then
-        echo "  [i] 操作已取消，未做任何变更。"
-        return 0
-    fi
-    
-    # 1. 严格的类型与范围约束
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000 到 65535 之间的纯数字！\033[0m"
-        return 1
+  local new_port=""
+  local config_tmp=""
+  local config_changed=0
+
+  echo ""
+  echo -e " \033[1;36m▶ 启动端口动态跃迁机制...\033[0m"
+  echo -e " \033[1;33m⚠️ 注意：修改端口会同步更新节点配置。\033[0m"
+  echo ""
+
+  read -r -p \
+    " 请输入全新节点通信端口 (10000-65535) [直接回车取消]: " \
+    new_port
+
+  if [[ -z "$new_port" ]]; then
+    echo " [i] 操作已取消，未做任何变更。"
+    return 0
+  fi
+
+  if [[ ! "$new_port" =~ ^[0-9]+$ ]] ||
+     (( new_port < 10000 || new_port > 65535 ))
+  then
+    echo -e \
+      " \033[1;31m[✘] 错误：端口必须为 10000 到 65535 的纯数字。\033[0m"
+    return 1
+  fi
+
+  if command -v lsof >/dev/null 2>&1 &&
+     lsof -i:"$new_port" >/dev/null 2>&1
+  then
+    echo -e \
+      " \033[1;31m[✘] 错误：端口 $new_port 已被占用。\033[0m"
+    return 1
+  fi
+
+  if [[ -f /etc/sing-box/config.json ]]; then
+    _prepare_config_tmp_dir || {
+      red " [错误] 无法准备私有配置临时目录。"
+      return 1
+    }
+
+    _begin_singbox_config_transaction || {
+      red " [错误] 无法创建配置事务备份。"
+      return 1
+    }
+
+    config_tmp=$(
+      mktemp \
+        "$HY2_CONFIG_TMP_DIR/sb_menu_port.XXXXXX"
+    ) || {
+      _abort_singbox_config_update \
+        "无法创建端口配置临时文件"
+      return 1
+    }
+
+    if ! jq \
+      --argjson port "$new_port" \
+      '
+        (
+          .inbounds[]
+          | select(
+              .type == "vless"
+              or .type == "hysteria2"
+            )
+          | .listen_port
+        ) = $port
+      ' \
+      /etc/sing-box/config.json \
+      > "$config_tmp"
+    then
+      rm -f -- "$config_tmp"
+
+      _abort_singbox_config_update \
+        "底层 JSON 配置解析失败"
+
+      return 1
     fi
 
-    # 2. 物理端口冲突硬核检查
-    if command -v lsof >/dev/null 2>&1; then
-        if lsof -i:"$new_port" >/dev/null 2>&1; then
-            echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被当前系统其他服务霸占，请更换！\033[0m"
-            return 1
-        fi
+    if ! mv -f -- \
+      "$config_tmp" \
+      /etc/sing-box/config.json
+    then
+      rm -f -- "$config_tmp"
+
+      _abort_singbox_config_update \
+        "无法发布新端口配置"
+
+      return 1
     fi
 
-    # 3. 外科手术：重写 Sing-box 底层 Inbounds 监听配置
-    if [ -f /etc/sing-box/config.json ]; then
-        if jq '(.inbounds[] | select(.type=="vless" or .type=="hysteria2") | .listen_port) = '$new_port'' /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
-            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
-        else
-            echo -e "  \033[1;31m[✘] 错误：底层 JSON 配置解析失败，拒绝写入！\033[0m"
-            return 1
-        fi
-    fi
+    config_tmp=""
+    config_changed=1
 
-    # 4. 全量数据持久化同步：刷新存储目录下的所有环境变量及端口快照 (保障订阅生成线同步)
-    if [ -d /etc/hy2-vless ]; then
-        find /etc/hy2-vless/ -type f -exec sed -i "s/^PORT=.*/PORT=$new_port/g" {} + 2>/dev/null || true
-        find /etc/hy2-vless/ -type f -exec sed -i "s/^port=.*/port=$new_port/g" {} + 2>/dev/null || true
+    if ! restart_singbox_checked; then
+      return 1
     fi
+  fi
 
-    # 5. 调用 V1.5.7 全局劫持装甲：瞬间释放旧端口，打通新防火墙并平滑唤醒核心
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl restart sing-box >/dev/null 2>&1
-    fi
-    
-    echo ""
-    echo -e "  \033[1;32m[✔] 成功！通信端口已平滑跃迁至 [ $new_port ]，订阅分发系统已完成全量全同步！\033[0m"
-    echo ""
-    read -n 1 -s -r -p "按任意键返回信息面板..."
+  if [[ -d /etc/hy2-vless ]]; then
+    find /etc/hy2-vless/ \
+      -type f \
+      -exec sed -i \
+        "s/^PORT=.*/PORT=$new_port/g" \
+        {} + \
+      2>/dev/null || true
+
+    find /etc/hy2-vless/ \
+      -type f \
+      -exec sed -i \
+        "s/^port=.*/port=$new_port/g" \
+        {} + \
+      2>/dev/null || true
+  fi
+
+  echo ""
+
+  if [[ "$config_changed" -eq 1 ]]; then
+    echo -e \
+      " \033[1;32m[✔] 成功：通信端口已安全更新为 [ $new_port ]。\033[0m"
+  else
+    echo -e \
+      " \033[1;33m[提示] 未找到 Sing-box 配置，仅更新了持久化端口记录。\033[0m"
+  fi
+
+  echo ""
+  read -r -n 1 -s -p "按任意键返回信息面板..."
 }
