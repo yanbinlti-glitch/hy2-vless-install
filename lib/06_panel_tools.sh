@@ -39,7 +39,7 @@ remove_node() {
     echo ""
     echo -e "  ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
     read rm_choice || return
 
     case $rm_choice in
@@ -196,7 +196,7 @@ config_outbound() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -454,7 +454,10 @@ enable_bbr() {
     local total_mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
     [[ -z "$total_mem_kb" ]] && total_mem_kb=1048576
     local page_size=$(getconf PAGESIZE 2>/dev/null || echo 4096)
-    if ! [[ "$page_size" =~ ^[0-9]+$ ]] || [[ "$page_size" -le 0 ]]; then
+
+            7) _modify_specific_port "hy2" ;;
+            8) _modify_specific_port "vless" ;;
+            9) _modify_sub_port ;;    if ! [[ "$page_size" =~ ^[0-9]+$ ]] || [[ "$page_size" -le 0 ]]; then
         page_size=4096
     fi
     local mem_pages=$(( total_mem_kb / (page_size / 1024) ))
@@ -525,7 +528,7 @@ singbox_switch() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
         1 ) restart_singbox_checked && green "  Sing-box 核心已启动/重载！"; sleep 2 ;;
@@ -1094,7 +1097,6 @@ set_node_expiration() {
     clear
     print_line
     green " 设置 / 延长节点有效期 (定时停用看门狗) "
-    echo -e "  \033[1;32m[88]\033[0m 修改节点通信端口 (热重载)"
     print_line
     echo ""
     
@@ -1171,11 +1173,13 @@ config_modify_menu() {
         echo -e " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hy2 的跳跃端口${PLAIN}"
         echo -e " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}"
                 echo -e " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_PURPLE}配置节点定时停用限时 (到期自动断网)${PLAIN}"
-        echo -e " ${LIGHT_GREEN}[88]${PLAIN} ${LIGHT_CYAN}修改节点通信端口 (热重载)${PLAIN}"
-        echo ""
+
+        echo -e " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_CYAN}修改 Hy2 节点通信端口${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_CYAN}修改 VLESS 节点通信端口${PLAIN}"
+        echo -e " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_CYAN}修改订阅链接分发 (Web) 端口${PLAIN}"        echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6, 88]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
@@ -1185,9 +1189,6 @@ config_modify_menu() {
             4) enable_hy2_port_hopping ;;
             5) modify_node_name ;;
             6) set_node_expiration ;;
-            88)
-                _modify_node_port
-                ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
@@ -1580,7 +1581,7 @@ warp_ipv6_route_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
         read warp_ipv6_choice || return
 
         case "$warp_ipv6_choice" in
@@ -1830,39 +1831,82 @@ show_warp_ipv6_route() {
 }
 
 
-# --- V1.6.8 端口动态跃迁后端数据同步链 ---
-_modify_node_port() {
-    echo ""
-    echo -e "  \033[1;36m▶ 启动端口动态跃迁机制...\033[0m"
-    echo -e "  \033[1;33m⚠️ 注意：修改端口会同步刷新 Nginx 在线订阅文件及终端生成的明文链接！\033[0m"
-    echo ""
-    read -p "  请输入全新节点通信端口 (10000-65535) [直接回车取消]: " new_port
+
+
+# --- V1.7.1 节点与订阅独立端口映射核心 ---
+_modify_specific_port() {
+    local node_type="$1"
+    local type_name
+    if [ "$node_type" == "hy2" ]; then type_name="Hysteria2"; else type_name="VLESS"; fi
+
+    echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
+    local new_port
+    read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
     
-    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then
-        echo "  [i] 操作已取消。"
-        return 0
-    fi
+    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
     if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000 到 65535 之间的纯数字！\033[0m"
-        return 1
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
     fi
     if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
-        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被当前系统占用！\033[0m"
-        return 1
+        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
     fi
 
+    # 精确制导：只修改指定协议的端口，绝不误伤另一个
     if [ -f /etc/sing-box/config.json ]; then
-        jq '(.inbounds[] | select(.type=="vless" or .type=="hysteria2") | .listen_port) = '$new_port'' /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
+        local filter
+        if [ "$node_type" == "hy2" ]; then
+            filter='.inbounds |= map(if .type == "hysteria2" then .listen_port = '$new_port' else . end)'
+        else
+            filter='.inbounds |= map(if .type == "vless" then .listen_port = '$new_port' else . end)'
+        fi
+        
+        if jq "$filter" /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
+            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
+        else
+            echo -e "  \033[1;31m[✘] 错误：JSON 改写失败！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+        fi
     fi
+
     if [ -d /etc/hy2-vless ]; then
-        find /etc/hy2-vless/ -type f -exec sed -i "s/^PORT=.*/PORT=$new_port/g" {} + 2>/dev/null || true
-        find /etc/hy2-vless/ -type f -exec sed -i "s/^port=.*/port=$new_port/g" {} + 2>/dev/null || true
+        if [ "$node_type" == "hy2" ]; then
+            find /etc/hy2-vless/ -type f -exec sed -i "s/^HY2_PORT=.*/HY2_PORT=$new_port/g" {} + 2>/dev/null || true
+        else
+            find /etc/hy2-vless/ -type f -exec sed -i "s/^VLESS_PORT=.*/VLESS_PORT=$new_port/g" {} + 2>/dev/null || true
+        fi
     fi
-    if command -v systemctl >/dev/null 2>&1; then 
-        systemctl restart sing-box >/dev/null 2>&1
+
+    if command -v systemctl >/dev/null 2>&1; then systemctl restart sing-box >/dev/null 2>&1; fi
+    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]！\033[0m\n"
+    read -n 1 -s -r -p "  按任意键返回..."
+}
+
+_modify_sub_port() {
+    echo -e "\n  \033[1;36m▶ 正在修改订阅链接在线分发 (Web) 端口...\033[0m"
+    local new_port
+    read -p "  请输入全新订阅分发端口 (1000-65535) [直接回车取消]: " new_port
+    
+    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1000 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
+        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+
+    # 修改环境变量库中的订阅 Web 端口参数
+    if [ -d /etc/hy2-vless ]; then
+        find /etc/hy2-vless/ -type f -exec sed -i "s/^SUB_PORT=.*/SUB_PORT=$new_port/g" {} + 2>/dev/null || true
+        find /etc/hy2-vless/ -type f -exec sed -i "s/^NGINX_PORT=.*/NGINX_PORT=$new_port/g" {} + 2>/dev/null || true
     fi
     
-    echo -e "  \033[1;32m[✔] 成功！通信端口已平滑跃迁至 [ $new_port ]，订阅已全自适应同步！\033[0m"
-    echo ""
-    read -n 1 -s -r -p "按任意键返回..."
+    # 尝试安全穿透替换 Nginx 的监听配置
+    if command -v nginx >/dev/null 2>&1; then
+        for conf in /etc/nginx/conf.d/*.conf /etc/nginx/sites-available/*.conf; do
+            [ -f "$conf" ] && sed -i -E "s/listen\s+[0-9]+/listen $new_port/g" "$conf" 2>/dev/null || true
+        done
+        systemctl restart nginx >/dev/null 2>&1 || true
+    fi
+
+    echo -e "  \033[1;32m[✔] 在线订阅分发 Web 端口已成功修改为 [ $new_port ]！\033[0m\n"
+    read -n 1 -s -r -p "  按任意键返回..."
 }
