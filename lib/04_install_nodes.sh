@@ -6,13 +6,53 @@
 ensure_foundation() {
     if [[ ! -d "/opt/hy2_tmp" ]]; then
         mkdir -p "/opt/hy2_tmp" >/dev/null 2>&1
-        chmod 755 "/opt/hy2_tmp" >/dev/null 2>&1
+        chmod 700 "/opt/hy2_tmp" >/dev/null 2>&1
     fi
     # 彻底清理可能导致解压失败的旧版僵尸文件
     rm -rf /opt/hy2_tmp/sing-box* 2>/dev/null
 }
 
 ensure_foundation
+
+readonly HY2_CONFIG_TMP_DIR="/etc/sing-box/.tmp"
+
+_prepare_config_tmp_dir() {
+  # 防止目录本身被替换为符号链接。
+  if [[ -L /etc/sing-box ]]; then
+    printf '%s\n' \
+      "[错误] /etc/sing-box 不能是符号链接。" \
+      >&2
+    return 1
+  fi
+
+  install -d -m 700 /etc/sing-box ||
+    return 1
+
+  if [[ -L "$HY2_CONFIG_TMP_DIR" ]]; then
+    printf '%s\n' \
+      "[错误] 配置临时目录不能是符号链接：$HY2_CONFIG_TMP_DIR" \
+      >&2
+    return 1
+  fi
+
+  install -d -m 700 "$HY2_CONFIG_TMP_DIR" ||
+    return 1
+
+  # 只清理本项目私有目录中的过期临时 JSON。
+  find "$HY2_CONFIG_TMP_DIR" \
+    -xdev \
+    -maxdepth 1 \
+    -type f \
+    -name 'sb_*.json' \
+    -mtime +1 \
+    -delete \
+    2>/dev/null || true
+}
+
+_prepare_config_tmp_dir || {
+  return 1 2>/dev/null || exit 1
+}
+
 #  5. 安装交互核心流程
 # =================================================================
 inst_cert() {
@@ -337,7 +377,7 @@ migrate_legacy_dns_config() {
               .
             end
           )
-        ' /etc/sing-box/config.json > /tmp/sb_dns.json && [ -s /tmp/sb_dns.json ] && mv /tmp/sb_dns.json /etc/sing-box/config.json
+        ' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_dns.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_dns.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_dns.$$.json" /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] DNS 配置迁移完成。"
     fi
@@ -351,7 +391,7 @@ fix_dns_detour_direct_config() {
     if jq -e '.dns.servers[]? | select((.detour // "") == "direct")' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  检测到 DNS 残留 detour=direct，正在移除以兼容新版 sing-box..."
         cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.dns-detour.$(date +%F-%H%M%S)" || true
-        jq '(.dns.servers[]? | select((.detour // "") == "direct")) |= del(.detour)'           /etc/sing-box/config.json > /tmp/sb_dns_detour.json && [ -s /tmp/sb_dns_detour.json ] && mv /tmp/sb_dns_detour.json /etc/sing-box/config.json
+        jq '(.dns.servers[]? | select((.detour // "") == "direct")) |= del(.detour)'           /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_dns_detour.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_dns_detour.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_dns_detour.$$.json" /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] DNS detour 兼容修复完成。"
     fi
@@ -365,7 +405,7 @@ migrate_legacy_route_config() {
     if jq -e '.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null)))' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  检测到旧版路由规则，正在补充 action=route..."
         cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.route.$(date +%F-%H%M%S)" || true
-        jq '(.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null))) | .action) = "route"'           /etc/sing-box/config.json > /tmp/sb_route.json && [ -s /tmp/sb_route.json ] && mv /tmp/sb_route.json /etc/sing-box/config.json
+        jq '(.route.rules[]? | select((has("outbound")) and ((has("action") | not) or (.action == null))) | .action) = "route"'           /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_route.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_route.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_route.$$.json" /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] 路由规则兼容修复完成。"
     fi
@@ -380,7 +420,7 @@ fix_listen_for_no_ipv6() {
     if jq -e '.inbounds[]? | select(.listen == "::")' /etc/sing-box/config.json >/dev/null 2>&1; then
         yellow "  当前系统未启用 IPv6，正在把监听地址从 :: 改为 0.0.0.0..."
         cp -a /etc/sing-box/config.json "/etc/sing-box/config.json.bak.listen.$(date +%F-%H%M%S)" || true
-        jq '(.inbounds[]? | select(.listen == "::") | .listen) = "0.0.0.0"'           /etc/sing-box/config.json > /tmp/sb_listen.json && [ -s /tmp/sb_listen.json ] && mv /tmp/sb_listen.json /etc/sing-box/config.json
+        jq '(.inbounds[]? | select(.listen == "::") | .listen) = "0.0.0.0"'           /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_listen.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_listen.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_listen.$$.json" /etc/sing-box/config.json
         chmod 600 /etc/sing-box/config.json
         green "  [✔] 监听地址兼容修复完成。"
     fi
@@ -582,10 +622,10 @@ echo ""
       "listen_port": ($p | tonumber),
       "users": [{"password": $pwd}],
       "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
-    }]' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
+    }]' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json
     
     if [[ -n "$obfs_pwd" ]]; then
-        jq --arg obfs "$obfs_pwd" '( .inbounds[] | select(.tag=="hy2-in") ) += { "obfs": {"type": "salamander", "password": $obfs} }' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
+        jq --arg obfs "$obfs_pwd" '( .inbounds[] | select(.tag=="hy2-in") ) += { "obfs": {"type": "salamander", "password": $obfs} }' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json
     fi
     
     chmod 600 /etc/sing-box/config.json
@@ -659,7 +699,7 @@ echo ""
           "short_id": [$sid]
         }
       }
-    }]' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
+    }]' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config.json
     
     chmod 600 /etc/sing-box/config.json
     svc_enable sing-box
