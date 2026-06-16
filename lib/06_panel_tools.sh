@@ -173,6 +173,36 @@ config_outbound() {
         sleep 2; return
     fi
 
+
+    local outbound_tmp_dir=""
+    local outbound_block_tmp=""
+    local ob_opt_tmp=""
+    local config_tmp=""
+
+    _prepare_config_tmp_dir || {
+      red " [错误] 无法准备私有配置临时目录。"
+      return 1
+    }
+
+    outbound_tmp_dir=$(
+      mktemp -d \
+        "$HY2_CONFIG_TMP_DIR/panel_outbound.XXXXXX"
+    ) || {
+      red " [错误] 无法创建落地代理私有临时目录。"
+      return 1
+    }
+
+    chmod 0700 "$outbound_tmp_dir" || {
+      rm -rf -- "$outbound_tmp_dir"
+      return 1
+    }
+
+    outbound_block_tmp="$outbound_tmp_dir/outbound_block.json"
+    ob_opt_tmp="$outbound_tmp_dir/ob_opt.json"
+    config_tmp="$outbound_tmp_dir/config.json"
+
+    trap 'rm -rf -- "$outbound_tmp_dir"' RETURN
+
     local current_outbound=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -n "$current_outbound" && "$current_outbound" != "null" ]]; then
         local out_server=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server' /etc/sing-box/config.json 2>/dev/null)
@@ -258,59 +288,123 @@ config_outbound() {
                 fi
             fi
 
-            # --- V1.4.6 跨洲链路底层优化引擎 ---
-            if [ -f /tmp/outbound_block.json ]; then
-                # 强行注入 TCP Fast Open 参数，节约 1-RTT 握手时间，大幅增强跨洲弱网环境下的响应速度
-                jq '.[0] += {"tcp_fast_open": true}' /tmp/outbound_block.json > /tmp/ob_opt.json 2>/dev/null && mv /tmp/ob_opt.json /tmp/outbound_block.json
-            fi
-
-            # --- V1.5.5 量子并发引擎 (Smux 多路复用) ---
-            if [ -f /tmp/outbound_block.json ]; then
-                jq '.[0].multiplex = {"enabled": true, "protocol": "smux", "max_connections": 4, "min_streams": 2, "max_streams": 16}' /tmp/outbound_block.json > /tmp/ob_opt.json 2>/dev/null && mv /tmp/ob_opt.json /tmp/outbound_block.json
-            fi
-
+            # 使用单次 jq 构造代理对象，避免读取上一次运行残留文件。
             echo ""
-            yellow "  正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
-            
-            jq --arg type "$proxy_type" --arg tls "$proxy_tls" --arg addr "$proxy_addr" --arg port "$proxy_port" --arg user "$proxy_user" --arg pass "$proxy_pass" '
-              {
-                "type": $type,
-                "tag": "proxy",
-                "server": $addr,
-                "server_port": ($port|tonumber)
-              }
-              | if $user != "" then . + {"username": $user, "password": $pass} else . end
-              | if $tls == "true" then . + {"tls": {"enabled": true, "server_name": $addr, "insecure": true}} else . end
-            ' <<<'{}' > /tmp/outbound_block.json
+            yellow " 正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
+
+            if ! jq \
+              --arg type "$proxy_type" \
+              --arg tls "$proxy_tls" \
+              --arg addr "$proxy_addr" \
+              --arg port "$proxy_port" \
+              --arg user "$proxy_user" \
+              --arg pass "$proxy_pass" \
+              '
+                {
+                  type: $type,
+                  tag: "proxy",
+                  server: $addr,
+                  server_port: ($port | tonumber),
+                  tcp_fast_open: true,
+                  multiplex: {
+                    enabled: true,
+                    protocol: "smux",
+                    max_connections: 4,
+                    min_streams: 2,
+                    max_streams: 16
+                  }
+                }
+                | if $user != ""
+                  then . + {
+                    username: $user,
+                    password: $pass
+                  }
+                  else .
+                  end
+                | if $tls == "true"
+                  then . + {
+                    tls: {
+                      enabled: true,
+                      server_name: $addr,
+                      insecure: true
+                    }
+                  }
+                  else .
+                  end
+              ' \
+              <<<'{}' \
+              > "$outbound_block_tmp"
+            then
+              red " [错误] 无法生成落地代理对象。"
+              return 1
+            fi
+
+            if ! jq -e \
+              '
+                type == "object"
+                and .tag == "proxy"
+                and (.server | type == "string")
+                and (.server_port | type == "number")
+              ' \
+              "$outbound_block_tmp" \
+              >/dev/null
+            then
+              red " [错误] 生成的落地代理对象结构无效。"
+              return 1
+            fi
+
+            if ! _begin_singbox_config_transaction; then
+              red " [错误] 无法创建落地代理配置事务备份。"
+              return 1
+            fi
 
             if [[ "$out_choice" == "1" ]]; then
-                jq --slurpfile ob /tmp/outbound_block.json '
+                jq --slurpfile ob "$outbound_block_tmp" '
                   del(.outbounds[] | select(.tag=="proxy")) |
                   del(.route.rules[] | select(.outbound=="proxy")) |
               del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
                   .outbounds += $ob |
                   .route.rules = [{"network": "udp", "port": 443, "action": "route", "outbound": "block"}, {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
-                ' /etc/sing-box/config.json > /tmp/sb_out.json
+                ' /etc/sing-box/config.json > "$config_tmp"
             elif [[ "$out_choice" == "3" ]]; then
-                jq --slurpfile ob /tmp/outbound_block.json --arg inb "$target_inbound" '
+                jq --slurpfile ob "$outbound_block_tmp" --arg inb "$target_inbound" '
                   del(.outbounds[] | select(.tag=="proxy")) |
                   del(.route.rules[] | select(.outbound=="proxy")) |
               del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
                   .outbounds += $ob |
                   .route.rules = [{"inbound": [$inb], "action": "route", "outbound": "proxy"}] + .route.rules
-                ' /etc/sing-box/config.json > /tmp/sb_out.json
+                ' /etc/sing-box/config.json > "$config_tmp"
             else
-                jq --slurpfile ob /tmp/outbound_block.json '
+                jq --slurpfile ob "$outbound_block_tmp" '
                   del(.outbounds[] | select(.tag=="proxy")) |
                   del(.route.rules[] | select(.outbound=="proxy")) |
               del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
                   .outbounds += $ob |
                   .route.rules = [{"protocol": "dns", "action": "route", "outbound": "direct"}, {"port": 53, "action": "route", "outbound": "direct"}, {"network": "udp", "port": 443, "action": "route", "outbound": "block"}] + .route.rules + [{"action": "route", "outbound": "proxy"}]
-                ' /etc/sing-box/config.json > /tmp/sb_out.json
+                ' /etc/sing-box/config.json > "$config_tmp"
             fi
 
-            if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[致命错误] jq 结构化写入失败，已强行中止流程！\033[0m"; sleep 2; return; fi
-            rm -f /tmp/outbound_block.json /tmp/sb_out.json /tmp/ob_opt.json 2>/dev/null
+            if [[ -s "$config_tmp" ]] &&
+               jq -e empty "$config_tmp" >/dev/null 2>&1
+            then
+              if ! mv -f -- \
+                "$config_tmp" \
+                /etc/sing-box/config.json
+              then
+                _abort_singbox_config_update \
+                  "无法发布落地代理配置"
+
+                return 1
+              fi
+
+              config_tmp=""
+            else
+              _abort_singbox_config_update \
+                "落地代理配置生成或 JSON 校验失败"
+
+              return 1
+            fi
+            rm -f -- "$outbound_block_tmp" "$ob_opt_tmp" 2>/dev/null || true
             
             green "  新落地代理配置写入完毕！"
             if restart_singbox_checked; then
@@ -325,10 +419,34 @@ config_outbound() {
             fi
             ;;
         4)
+            if ! _begin_singbox_config_transaction; then
+              red " [错误] 无法创建关闭代理配置事务备份。"
+              return 1
+            fi
+
             yellow "  正在清除中转路由配置..."
-            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))' /etc/sing-box/config.json > /tmp/sb_out.json
-            if [ -s /tmp/sb_out.json ]; then mv -f /tmp/sb_out.json /etc/sing-box/config.json; else echo -e "\033[0;31m[致命错误] jq 结构化写入失败，已强行中止流程！\033[0m"; sleep 2; return; fi
-            rm -f /tmp/outbound_block.json /tmp/sb_out.json /tmp/ob_opt.json 2>/dev/null
+            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))' /etc/sing-box/config.json > "$config_tmp"
+            if [[ -s "$config_tmp" ]] &&
+               jq -e empty "$config_tmp" >/dev/null 2>&1
+            then
+              if ! mv -f -- \
+                "$config_tmp" \
+                /etc/sing-box/config.json
+              then
+                _abort_singbox_config_update \
+                  "无法发布落地代理配置"
+
+                return 1
+              fi
+
+              config_tmp=""
+            else
+              _abort_singbox_config_update \
+                "落地代理配置生成或 JSON 校验失败"
+
+              return 1
+            fi
+            rm -f -- "$outbound_block_tmp" "$ob_opt_tmp" 2>/dev/null || true
             
             if restart_singbox_checked; then
                 sleep 1
