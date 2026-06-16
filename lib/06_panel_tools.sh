@@ -455,9 +455,7 @@ enable_bbr() {
     [[ -z "$total_mem_kb" ]] && total_mem_kb=1048576
     local page_size=$(getconf PAGESIZE 2>/dev/null || echo 4096)
 
-            7) _modify_specific_port "hy2" ;;
-            8) _modify_specific_port "vless" ;;
-            9) _modify_sub_port ;;    if ! [[ "$page_size" =~ ^[0-9]+$ ]] || [[ "$page_size" -le 0 ]]; then
+            if ! [[ "$page_size" =~ ^[0-9]+$ ]] || [[ "$page_size" -le 0 ]]; then
         page_size=4096
     fi
     local mem_pages=$(( total_mem_kb / (page_size / 1024) ))
