@@ -15,6 +15,14 @@ ensure_foundation() {
 ensure_foundation
 #  6. 核心业务处理与多态聚合订阅引擎 (完全修复 YAML 换行 Bug)
 # =================================================================
+_uri_encode() {
+  local value="${1-}"
+
+  jq -rn \
+    --arg value "$value" \
+    '$value | @uri'
+}
+
 generate_client_configs() {
     realip
     check_installed_nodes
@@ -127,9 +135,29 @@ generate_client_configs() {
 
         local yaml_pwd="${pwd//\'/\'\'}"
         local s_pwd=$(jq -nr --arg v "$pwd" '$v|@uri')
-        local url="hysteria2://$s_pwd@$(get_link_ip):$hy2_client_port/?insecure=1&pinSHA256=$cert_pin&sni=$sni"
-        [[ -n "$hop_ports" ]] && url="${url}&mport=${hop_ports}"
-        [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${obfs}"
+  local s_sni=""
+  local s_cert_pin=""
+  local s_hop_ports=""
+  local s_obfs=""
+
+  s_sni="$(_uri_encode "$sni")" ||
+    return 1
+
+  s_cert_pin="$(_uri_encode "$cert_pin")" ||
+    return 1
+
+  if [[ -n "$hop_ports" ]]; then
+    s_hop_ports="$(_uri_encode "$hop_ports")" ||
+      return 1
+  fi
+
+  if [[ -n "$obfs" ]]; then
+    s_obfs="$(_uri_encode "$obfs")" ||
+      return 1
+  fi
+        local url="hysteria2://$s_pwd@$(get_link_ip):$hy2_client_port/?insecure=1&pinSHA256=$s_cert_pin&sni=$s_sni"
+        [[ -n "$hop_ports" ]] && url="${url}&mport=${s_hop_ports}"
+        [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${s_obfs}"
         url="${url}#${safe_node_name}"
         
         # 修复 Bug 1：使用标准 Bash 物理换行，防止写死字面量 \n
@@ -177,8 +205,20 @@ generate_client_configs() {
         [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/vless_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
         local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
+  local s_reality_pub=""
+  local s_vless_sni=""
+  local s_reality_sid=""
 
-        local url="vless://$uuid@$(get_link_ip):$bind_port/?security=reality&encryption=none&pbk=$pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$sni&sid=$sid#${safe_node_name}"
+  s_reality_pub="$(_uri_encode "$pub")" ||
+    return 1
+
+  s_vless_sni="$(_uri_encode "$sni")" ||
+    return 1
+
+  s_reality_sid="$(_uri_encode "$sid")" ||
+    return 1
+
+        local url="vless://$uuid@$(get_link_ip):$bind_port/?security=reality&encryption=none&pbk=$s_reality_pub&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=$s_vless_sni&sid=$s_reality_sid#${safe_node_name}"
         
         url_all="${url_all}${url}
 "
