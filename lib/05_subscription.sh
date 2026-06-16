@@ -34,13 +34,68 @@ generate_client_configs() {
         open_port "$sub_port" "tcp" "sub"
     fi
 
-    local sub_uuid=$(cat /root/.hy2_sub_uuid 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
-    [[ -z "$sub_uuid" ]] && sub_uuid=$(echo "$(get_sub_ip)-Singbox-Sub" | md5sum | head -c 16)
-    echo "$sub_uuid" > /root/.hy2_sub_uuid
-    echo "$sub_uuid" > /etc/sing-box/sub_path.txt
-    
-    local web_dir="/var/www/sing-box"
-    mkdir -p "$web_dir/$sub_uuid"
+    local token_file="/root/.hy2_sub_uuid"
+  local old_sub_uuid=""
+  local sub_uuid=""
+  local token_tmp=""
+
+  old_sub_uuid=$(
+    cat "$token_file" 2>/dev/null |
+      LC_ALL=C tr -dc 'a-zA-Z0-9' || true
+  )
+
+  # 仅保留已经符合新规范的 256 位随机令牌。
+  if [[ "$old_sub_uuid" =~ ^[0-9a-f]{64}$ ]]; then
+    sub_uuid="$old_sub_uuid"
+  else
+    if command -v openssl >/dev/null 2>&1; then
+      sub_uuid=$(openssl rand -hex 32)
+    else
+      sub_uuid=$(
+        od -An -N32 -tx1 /dev/urandom |
+          tr -d ' \n'
+      )
+    fi
+
+    if [[ ! "$sub_uuid" =~ ^[0-9a-f]{64}$ ]]; then
+      red " [错误] 无法生成安全的订阅令牌。"
+      return 1
+    fi
+
+    # 旧令牌可预测，轮换后删除旧订阅目录，
+    # 使旧订阅链接立即失效。
+    if [[ -n "$old_sub_uuid" &&
+          "$old_sub_uuid" =~ ^[A-Za-z0-9]{1,128}$ ]]
+    then
+      rm -rf -- "/var/www/sing-box/$old_sub_uuid"
+    fi
+  fi
+
+  # 在 root 私有目录中原子保存令牌。
+  token_tmp=$(
+    mktemp /root/.hy2_sub_uuid.tmp.XXXXXX
+  ) || return 1
+
+  printf '%s\n' "$sub_uuid" > "$token_tmp"
+  chmod 600 "$token_tmp"
+
+  if ! mv -f "$token_tmp" "$token_file"; then
+    rm -f "$token_tmp"
+    red " [错误] 无法保存订阅令牌。"
+    return 1
+  fi
+
+  install -d -m 700 /etc/sing-box
+
+  printf '%s\n' "$sub_uuid" \
+    > /etc/sing-box/sub_path.txt
+
+  chmod 600 /etc/sing-box/sub_path.txt
+
+  local web_dir="/var/www/sing-box"
+
+  install -d -m 750 \
+    "$web_dir/$sub_uuid"
     
     local url_all=""
     local proxy_yaml=""
@@ -157,7 +212,7 @@ generate_client_configs() {
     sb_tags="${sb_tags%,}"
 
     # 修复 Bug 3：正确输出文本流
-    printf "%s" "$url_all" > "$web_dir/$sub_uuid/url.txt"
+  rm -f "$web_dir/$sub_uuid/url.txt"
     printf "%s" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%s" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
 
     local sub_url="http://$(get_sub_ip):${sub_port}/${sub_uuid}"
@@ -236,7 +291,7 @@ server {
         rewrite ^ /$sub_uuid/sub_b64.txt last;
     }
 
-    location ~ ^/$sub_uuid/(clash-meta-sub\.yaml|sing-box\.json|sub_b64\.txt|url\.txt|sub_qr\.txt)$ {
+    location ~ ^/$sub_uuid/(clash-meta-sub\.yaml|sing-box\.json|sub_b64\.txt|sub_qr\.txt)$ {
         add_header Content-Type 'text/plain; charset=utf-8';
         add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0';
     }
