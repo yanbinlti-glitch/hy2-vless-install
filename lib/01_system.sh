@@ -38,7 +38,7 @@ _smart_run() {
     echo -en " [1;36m▶ ${msg}...[0m "
     
     # 幽灵进程接管：将真实指令打入黑洞并在后台执行，完美规避 SSH 断流
-    "$@" >/tmp/run_task.log 2>&1 &
+    "$@" >"$HY2_VLESS_RUN_LOG" 2>&1 &
     local pid=$!
     
     # 内核级中断拦截 (Trap)：防止用户 Ctrl+C 导致后台任务变成僵尸进程锁死系统
@@ -61,7 +61,7 @@ _smart_run() {
         printf "[1;32m[✔] 成功！      [0m
 "
     else
-        printf "[1;31m[✘] 失败！(日志存至 /tmp/run_task.log)[0m
+        printf "[1;31m[✘] 失败！(日志存至 $HY2_VLESS_RUN_LOG)[0m
 "
     fi
     return $exit_code
@@ -82,10 +82,11 @@ _smart_install() {
     if [[ -n "$total_ram" ]] && [ "$total_ram" -lt 400 ] && [ "$(free -m 2>/dev/null | awk '/^Swap:/{print $2}')" -eq 0 ]; then
         echo -e "
  [1;33m▶ [内存防爆盾] 检测到极小内存 ($total_ram MB)，正动态挂载 512MB 虚拟内存防宕机...[0m"
-        dd if=/dev/zero of=/tmp/hy2_swap bs=1M count=512 status=none
-        chmod 600 /tmp/hy2_swap
-        mkswap /tmp/hy2_swap >/dev/null 2>&1
-        swapon /tmp/hy2_swap >/dev/null 2>&1
+        rm -f "$HY2_VLESS_SWAP_FILE"
+        dd if=/dev/zero of="$HY2_VLESS_SWAP_FILE" bs=1M count=512 status=none
+        chmod 600 "$HY2_VLESS_SWAP_FILE"
+        mkswap "$HY2_VLESS_SWAP_FILE" >/dev/null 2>&1
+        swapon "$HY2_VLESS_SWAP_FILE" >/dev/null 2>&1
         swap_added=1
     fi
 
@@ -96,12 +97,12 @@ _smart_install() {
     # 防卡顿：开启子进程静默重定向安装
     (
         if [ "$pkg_mgr" == "apk" ]; then
-            command apk update >/tmp/pkg.log 2>&1
-            command apk add --no-cache $pkgs >>/tmp/pkg.log 2>&1
+            command apk update >"$HY2_VLESS_PKG_LOG" 2>&1
+            command apk add --no-cache $pkgs >>"$HY2_VLESS_PKG_LOG" 2>&1
         else
             export DEBIAN_FRONTEND=noninteractive
-            command apt-get update -q -y >/tmp/pkg.log 2>&1
-            command apt-get install -q -y $pkgs >>/tmp/pkg.log 2>&1
+            command apt-get update -q -y >"$HY2_VLESS_PKG_LOG" 2>&1
+            command apt-get install -q -y $pkgs >>"$HY2_VLESS_PKG_LOG" 2>&1
         fi
     ) &
     local pid=$!
@@ -121,15 +122,15 @@ _smart_install() {
 
     # 卸载内存装甲，做到来去无痕
     if [ "$swap_added" -eq 1 ]; then
-        swapoff /tmp/hy2_swap >/dev/null 2>&1
-        rm -f /tmp/hy2_swap
+        swapoff "$HY2_VLESS_SWAP_FILE" >/dev/null 2>&1
+        rm -f "$HY2_VLESS_SWAP_FILE"
     fi
 
     if [ $exit_code -eq 0 ]; then
         printf "[1;32m[✔] 成功！      [0m
 "
     else
-        printf "[1;31m[✘] 失败！(日志存至 /tmp/run_task.log)[0m
+        printf "[1;31m[✘] 失败！(日志存至 $HY2_VLESS_PKG_LOG)[0m
 "
     fi
 }
@@ -151,6 +152,47 @@ ensure_foundation
 #  2. 基础系统判定与快捷命令覆写
 # =================================================================
 [[ $EUID -ne 0 ]] && red " [错误] 请在 root 用户下运行此脚本！" && exit 1
+
+# --- 安全运行目录与日志文件 ---
+# 不在公共 /tmp 中创建固定名称的日志或交换文件。
+readonly HY2_VLESS_STATE_DIR="/var/lib/hy2-vless-install"
+readonly HY2_VLESS_LOG_DIR="/var/log/hy2-vless-install"
+readonly HY2_VLESS_RUN_LOG="$HY2_VLESS_LOG_DIR/run_task.log"
+readonly HY2_VLESS_PKG_LOG="$HY2_VLESS_LOG_DIR/pkg.log"
+readonly HY2_VLESS_SWAP_FILE="$HY2_VLESS_STATE_DIR/install.swap"
+
+_prepare_secure_runtime_paths() {
+  local dir
+  local file
+
+  for dir in \
+    "$HY2_VLESS_STATE_DIR" \
+    "$HY2_VLESS_LOG_DIR"
+  do
+    if [[ -L "$dir" ]]; then
+      red " [错误] 安全目录不能是符号链接：$dir"
+      return 1
+    fi
+
+    mkdir -p "$dir" || return 1
+    chmod 700 "$dir" || return 1
+  done
+
+  for file in \
+    "$HY2_VLESS_RUN_LOG" \
+    "$HY2_VLESS_PKG_LOG"
+  do
+    if [[ -L "$file" ]]; then
+      red " [错误] 日志文件不能是符号链接：$file"
+      return 1
+    fi
+
+    touch "$file" || return 1
+    chmod 600 "$file" || return 1
+  done
+}
+
+_prepare_secure_runtime_paths || exit 1
 
 # 快捷命令与多文件安装目录由入口 install.sh 统一处理。
 # 这里仅负责系统识别、包管理器变量、公共工具函数。
