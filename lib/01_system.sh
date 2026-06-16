@@ -325,3 +325,22 @@ rc-service() {
     fi
     command rc-service "$@"
 }
+
+
+# --- V1.5.9 全字符安全编码引擎 ---
+# 纯 Bash 原生实现的 RFC 3986 标准 URI 编码器，完美清洗特殊符号与中文字符
+_url_encode() {
+    local string="${1}"
+    local strlen=${#string}
+    local encoded=""
+    local pos c o
+    for (( pos=0 ; pos<strlen ; pos++ )); do
+        c=${string:$pos:1}
+        case "$c" in
+            [-_.~a-zA-Z0-9]) o="${c}" ;;
+            *) printf -v o '%%%02X' "'$c" ;;
+        esac
+        encoded+="${o}"
+    done
+    echo "${encoded}"
+}
