@@ -273,7 +273,36 @@ EOF
     local listen_ipv6=""
     [[ -f /proc/net/if_inet6 ]] && listen_ipv6="listen [::]:$sub_port;"
 
-    cat << EOF > "$nginx_conf_file"
+    local nginx_conf_candidate=""
+    local nginx_conf_backup=""
+    local nginx_conf_had_file=0
+    local nginx_was_active=0
+    local nginx_service_ok=1
+
+    install -d -m 700 /etc/sing-box || return 1
+
+    nginx_conf_candidate=$(
+      mktemp /etc/sing-box/nginx-sub.candidate.XXXXXX
+    ) || return 1
+
+    if [[ -f "$nginx_conf_file" ]]; then
+      nginx_conf_backup=$(
+        mktemp /etc/sing-box/nginx-sub.backup.XXXXXX
+      ) || {
+        rm -f "$nginx_conf_candidate"
+        return 1
+      }
+
+      if ! cp -L "$nginx_conf_file" "$nginx_conf_backup"; then
+        rm -f "$nginx_conf_candidate" "$nginx_conf_backup"
+        return 1
+      fi
+
+      chmod 600 "$nginx_conf_backup"
+      nginx_conf_had_file=1
+    fi
+
+    cat << EOF > "$nginx_conf_candidate"
 server {
     listen $sub_port;
     server_tokens off;
@@ -304,23 +333,64 @@ server {
 }
 EOF
 
-    if [[ $SYSTEM == "Ubuntu" || $SYSTEM == "Debian" ]]; then
-        ln -sf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/sites-enabled/
-        rm -f /etc/nginx/sites-enabled/default
+    if ! install -m 0644 "$nginx_conf_candidate" "$nginx_conf_file"; then
+      rm -f "$nginx_conf_candidate" "$nginx_conf_backup"
+      red " [错误] 无法安装新的 Nginx 配置。"
+      return 1
     fi
 
-    yellow "  正在执行 Nginx 配置校验，完整输出如下："
-    sed -i 's/^worker_processes.*/worker_processes 1;/g' /etc/nginx/nginx.conf 2>/dev/null || true
-    if nginx -t; then
-        svc_enable nginx
-        if is_svc_active nginx; then
-            if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
-        else
-            if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx start; else systemctl start nginx; fi
-        fi
-    else
-        red "  [警告] Nginx 语法测试失败，请检查端口是否冲突！"
+    rm -f "$nginx_conf_candidate"
+
+    if [[ $SYSTEM == "Ubuntu" || $SYSTEM == "Debian" ]]; then
+        ln -sf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/sites-enabled/
     fi
+
+    yellow " 正在执行 Nginx 配置校验，完整输出如下："
+
+    if is_svc_active nginx; then
+      nginx_was_active=1
+    fi
+
+    if ! nginx -t; then
+      nginx_service_ok=0
+    else
+      if ! svc_enable nginx; then
+        nginx_service_ok=0
+      elif [[ "$nginx_was_active" -eq 1 ]]; then
+        if ! svc_restart nginx; then
+          nginx_service_ok=0
+        fi
+      elif ! svc_start nginx; then
+        nginx_service_ok=0
+      fi
+    fi
+
+    if [[ "$nginx_service_ok" -ne 1 ]]; then
+      red " [错误] Nginx 配置校验或服务重载失败，正在恢复旧配置。"
+
+      if [[ "$nginx_conf_had_file" -eq 1 && -f "$nginx_conf_backup" ]]; then
+        install -m 0644 "$nginx_conf_backup" "$nginx_conf_file" || true
+      else
+        rm -f "$nginx_conf_file"
+
+        if [[ "$SYSTEM" == "Ubuntu" || "$SYSTEM" == "Debian" ]]; then
+          rm -f /etc/nginx/sites-enabled/sing-box-sub.conf
+        fi
+      fi
+
+      rm -f "$nginx_conf_candidate" "$nginx_conf_backup"
+
+      if nginx -t >/dev/null 2>&1; then
+        if [[ "$nginx_was_active" -eq 1 ]]; then
+          svc_restart nginx >/dev/null 2>&1 || true
+        fi
+      fi
+
+      return 1
+    fi
+
+    rm -f "$nginx_conf_backup"
+    green " [✔] Nginx 配置已安全应用。"
 }
 
 clean_env() {
