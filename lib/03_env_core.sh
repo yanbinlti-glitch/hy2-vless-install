@@ -153,11 +153,28 @@ check_env() {
     print_dep_status "Nginx 订阅分发" "nginx" "待安装"
 
     echo ""
-    yellow "  正在校准系统时钟 (防御 TLS 时钟偏移瘫痪)..."
-    local date_str=$(curl -sI -m 3 https://google.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
-    [[ -z "$date_str" ]] && date_str=$(curl -sI -m 3 https://cloudflare.com 2>/dev/null | grep -i Date | cut -d' ' -f3-6)
-    [[ -n "$date_str" ]] && date -s "${date_str}Z" || true
-    green "  [✔] 时间校准步骤完成。"
+    yellow " 正在启用系统 NTP 同步（不使用网页响应头修改系统时间）..."
+    local ntp_sync_started=0
+
+    if command -v timedatectl >/dev/null 2>&1; then
+      if timedatectl set-ntp true >/dev/null 2>&1; then
+        ntp_sync_started=1
+      fi
+    elif command -v chronyc >/dev/null 2>&1; then
+      if chronyc -a makestep >/dev/null 2>&1; then
+        ntp_sync_started=1
+      fi
+    elif command -v ntpd >/dev/null 2>&1; then
+      if ntpd -q -p pool.ntp.org >/dev/null 2>&1; then
+        ntp_sync_started=1
+      fi
+    fi
+
+    if [[ "$ntp_sync_started" -eq 1 ]]; then
+      green " [✔] 系统 NTP 同步已启用。"
+    else
+      yellow " [提示] 未找到可用的 NTP 服务，保留当前系统时间，不执行强制修改。"
+    fi
     
     local cmds=("curl" "wget" "sudo" "ss" "iptables" "python3" "openssl" "socat" "qrencode" "jq" "tar" "nginx")
     local missing=0
