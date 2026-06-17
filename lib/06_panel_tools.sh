@@ -345,7 +345,7 @@ config_outbound() {
     printf "%b
 " "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -378,7 +378,7 @@ config_outbound() {
             
             printf "%b" " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
             read proxy_port || exit 1
-            if [[ ! "$proxy_port" =~ ^[0-6]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
+            if [[ ! "$proxy_port" =~ ^[0-9]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
                 red "  [错误] 端口格式无效！"
                 sleep 2; return
             fi
@@ -425,19 +425,13 @@ config_outbound() {
               --arg pass "$proxy_pass" \
               '
                 {
-                  type: $type,
-                  tag: "proxy",
-                  server: $addr,
-                  server_port: ($port | tonumber),
-                  tcp_fast_open: true,
-                  multiplex: {
-                    enabled: true,
-                    protocol: "smux",
-                    max_connections: 4,
-                    min_streams: 2,
-                    max_streams: 16
-                  }
+                    type: $type,
+                    tag: "proxy",
+                    server: $addr,
+                    server_port: ($port | tonumber),
+                    tcp_fast_open: true
                 }
+                | if $type == "socks" then . + { version: "5" } else . end
                 | if $user != ""
                   then . + {
                     username: $user,
