@@ -1951,84 +1951,6 @@ show_warp_ipv6_route() {
 
 
 
-# --- V1.7.1 节点与订阅独立端口映射核心 ---
-_modify_specific_port() {
-    local node_type="$1"
-    local type_name
-    if [ "$node_type" == "hy2" ]; then type_name="Hysteria2"; else type_name="VLESS"; fi
-
-    echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
-    local new_port
-    read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
-    
-    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
-        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-
-    # 精确制导：只修改指定协议的端口，绝不误伤另一个
-    if [ -f /etc/sing-box/config.json ]; then
-        local filter
-        if [ "$node_type" == "hy2" ]; then
-            filter='.inbounds |= map(if .type == "hysteria2" then .listen_port = '$new_port' else . end)'
-        else
-            filter='.inbounds |= map(if .type == "vless" then .listen_port = '$new_port' else . end)'
-        fi
-        
-        if jq "$filter" /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
-            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
-        else
-            echo -e "  \033[1;31m[✘] 错误：JSON 改写失败！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-        fi
-    fi
-
-    if [ -d /etc/hy2-vless ]; then
-        if [ "$node_type" == "hy2" ]; then
-            find /etc/hy2-vless/ -type f -exec sed -i "s/^HY2_PORT=.*/HY2_PORT=$new_port/g" {} + 2>/dev/null || true
-        else
-            find /etc/hy2-vless/ -type f -exec sed -i "s/^VLESS_PORT=.*/VLESS_PORT=$new_port/g" {} + 2>/dev/null || true
-        fi
-    fi
-
-    if command -v systemctl >/dev/null 2>&1; then systemctl restart sing-box >/dev/null 2>&1; fi
-    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]！\033[0m\n"
-    read -n 1 -s -r -p "  按任意键返回..."
-}
-
-_modify_sub_port() {
-    echo -e "\n  \033[1;36m▶ 正在修改订阅链接在线分发 (Web) 端口...\033[0m"
-    local new_port
-    read -p "  请输入全新订阅分发端口 (1000-65535) [直接回车取消]: " new_port
-    
-    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
-        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-
-    # 修改环境变量库中的订阅 Web 端口参数
-    if [ -d /etc/hy2-vless ]; then
-        find /etc/hy2-vless/ -type f -exec sed -i "s/^SUB_PORT=.*/SUB_PORT=$new_port/g" {} + 2>/dev/null || true
-        find /etc/hy2-vless/ -type f -exec sed -i "s/^NGINX_PORT=.*/NGINX_PORT=$new_port/g" {} + 2>/dev/null || true
-    fi
-    
-    # 尝试安全穿透替换 Nginx 的监听配置
-    if command -v nginx >/dev/null 2>&1; then
-        for conf in /etc/nginx/conf.d/*.conf /etc/nginx/sites-available/*.conf; do
-            [ -f "$conf" ] && sed -i -E "s/listen\s+[0-9]+/listen $new_port/g" "$conf" 2>/dev/null || true
-        done
-        systemctl restart nginx >/dev/null 2>&1 || true
-    fi
-
-    echo -e "  \033[1;32m[✔] 在线订阅分发 Web 端口已成功修改为 [ $new_port ]！\033[0m\n"
-    read -n 1 -s -r -p "  按任意键返回..."
-}
-
 # HY2_NO_MAIN_UI_COMPAT_V2_BEGIN
 # 后台兼容函数：不修改主界面 UI，只保证菜单原有入口不会 command not found。
 config_modify_menu() {
@@ -2055,3 +1977,88 @@ if ! declare -F warp_ipv6_route_menu >/dev/null 2>&1; then
   }
 fi
 # HY2_NO_MAIN_UI_COMPAT_V2_END
+
+
+# --- V1.7.3 节点与订阅独立端口映射核心 (防火墙穿透与状态同步修复版) ---
+_modify_specific_port() {
+    local node_type="$1"
+    local type_name tag_name proto
+    if [ "$node_type" == "hy2" ]; then 
+        type_name="Hysteria2"; tag_name="hy2-in"; proto="udp"
+    else 
+        type_name="VLESS"; tag_name="vless-in"; proto="tcp"
+    fi
+
+    echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
+    local new_port
+    read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
+    
+    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
+        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+
+    if [ -f /etc/sing-box/config.json ]; then
+        local filter
+        if [ "$node_type" == "hy2" ]; then
+            filter='.inbounds |= map(if .type == "hysteria2" then .listen_port = '$new_port' else . end)'
+        else
+            filter='.inbounds |= map(if .type == "vless" then .listen_port = '$new_port' else . end)'
+        fi
+        
+        if jq "$filter" /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
+            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
+        else
+            echo -e "  \033[1;31m[✘] 错误：JSON 改写失败！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+        fi
+    fi
+
+    # 💥 修复2：防火墙状态机流转 (释放旧端口，打通新端口，防止被墙拦截)
+    close_port_by_tag "$tag_name" >/dev/null 2>&1 || true
+    open_port "$new_port" "$proto" "$tag_name" >/dev/null 2>&1 || true
+
+    # 💥 修复1：跨端OS兼容，抛弃 systemctl 强绑定，使用底层服务管家
+    restart_singbox_checked >/dev/null 2>&1 || true
+    generate_client_configs >/dev/null 2>&1 || true
+
+    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]，防火墙已打通！\033[0m\n"
+    read -n 1 -s -r -p "  按任意键返回..."
+}
+
+_modify_sub_port() {
+    echo -e "\n  \033[1;36m▶ 正在修改订阅链接在线分发 (Web) 端口...\033[0m"
+    local new_port
+    read -p "  请输入全新订阅分发端口 (1000-65535) [直接回车取消]: " new_port
+    
+    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1000 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
+        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+
+    # 💥 修复3：持久化写入真实的系统配置文件 (解决虚假变量 /etc/hy2-vless/ 导致的不持久化漏洞)
+    echo "$new_port" > /etc/sing-box/sub_port.txt
+
+    # 💥 防火墙跃迁
+    close_port_by_tag "sub" >/dev/null 2>&1 || true
+    open_port "$new_port" "tcp" "sub" >/dev/null 2>&1 || true
+    
+    # 安全穿透替换 Nginx 的监听配置 (兼容 Alpine 的 http.d 目录)
+    if command -v nginx >/dev/null 2>&1; then
+        for conf in /etc/nginx/conf.d/*.conf /etc/nginx/sites-available/*.conf /etc/nginx/http.d/*.conf; do
+            [ -f "$conf" ] && sed -i -E "s/listen\s+[0-9]+/listen $new_port/g" "$conf" 2>/dev/null || true
+        done
+        if is_svc_active nginx; then svc_restart nginx >/dev/null 2>&1 || true; fi
+    fi
+
+    # 💥 修复4：强制触发全局订阅重组，将新 Web 端口压入所有订阅链接
+    generate_client_configs >/dev/null 2>&1 || true
+
+    echo -e "  \033[1;32m[✔] 在线订阅分发 Web 端口已成功修改为 [ $new_port ]，防火墙及 Nginx 已热重载！\033[0m\n"
+    read -n 1 -s -r -p "  按任意键返回..."
+}
