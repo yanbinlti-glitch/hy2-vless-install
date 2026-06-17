@@ -1005,9 +1005,26 @@ modify_vless_self_signed_cert() {
 
     yellow " 当前 VLESS 伪装域名 / SNI: $current_sni"
     echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的 VLESS 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
-    read new_sni || return
-    [[ -z "$new_sni" ]] && new_sni="$current_sni"
+    yellow " 请选择新的安全伪装域名 (SNI):"
+    printf "%b\n" "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com"
+    printf "%b\n" "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
+    printf "%b\n" "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
+    printf "%b\n" "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-4] (回车保持原样: $current_sni): ${PLAIN}"
+    read sni_choice || sni_choice=0
+    [[ -z "$sni_choice" ]] && sni_choice=0
+
+    case $sni_choice in
+        1) new_sni="www.bing.com" ;;
+        2) new_sni="www.apple.com" ;;
+        3) new_sni="www.microsoft.com" ;;
+        4)
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入自定义伪装域名 (如 github.com) [回车保持原样]: ${PLAIN}"
+            read new_sni || new_sni="$current_sni"
+            [[ -z "$new_sni" ]] && new_sni="$current_sni"
+            ;;
+        *) new_sni="$current_sni" ;;
+    esac
 
     if [[ ! "$new_sni" =~ ^[A-Za-z0-9.-]+$ ]]; then
         red " [错误] 域名格式不合法。"
