@@ -1089,7 +1089,11 @@ restart_singbox_checked() {
   local service_was_active=0
   local restart_ok=1
 
-  service_was_active="$SINGBOX_CONFIG_TX_SERVICE_WAS_ACTIVE"
+  if [[ "${SINGBOX_CONFIG_TX_HAD_FILE:-0}" == "1" ]]; then
+    service_was_active="$SINGBOX_CONFIG_TX_SERVICE_WAS_ACTIVE"
+  else
+    is_svc_active sing-box && service_was_active=1 || service_was_active=0
+  fi
 
   if ! check_singbox_config; then
     _abort_singbox_config_update \
