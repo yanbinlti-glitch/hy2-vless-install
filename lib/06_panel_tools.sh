@@ -17,79 +17,156 @@ ensure_foundation
 # =================================================================
 remove_node() {
     check_installed_nodes
-    if [[ $has_hy2 -eq 0 && $has_vless -eq 0 ]]; then
-        red "  未检测到任何已部署的节点！"
-        sleep 2; return
+
+    if [[ ${has_hy2:-0} -eq 0 && ${has_vless:-0} -eq 0 ]]; then
+        red " 未检测到任何已部署的节点！"
+        sleep 2
+        return
     fi
 
     clear
     print_line
-    green "              节点安全卸载与清理管控              "
+    green " 节点安全卸载与清理管控 "
     print_line
     echo ""
-    yellow "  检测到当前系统已部署以下节点："
-    [[ $has_hy2 -eq 1 ]] && green "  ▶ Hysteria 2 : 运行中"
-    [[ $has_vless -eq 1 ]] && green "  ▶ VLESS      : 运行中"
+    yellow " 检测到当前系统已部署以下节点："
+    [[ ${has_hy2:-0} -eq 1 ]] && green " ▶ Hysteria 2 : 运行中"
+    [[ ${has_vless:-0} -eq 1 ]] && green " ▶ VLESS : 运行中"
     echo ""
-    yellow "  请选择需要执行的卸载操作："
+    yellow " 请选择需要执行的卸载操作："
     echo ""
-    [[ $has_hy2 -eq 1 ]] && printf "%b
-" "  ${LIGHT_GREEN}[1]${PLAIN} 仅卸载 Hysteria 2 节点 (保留 VLESS 配置)"
-    [[ $has_vless -eq 1 ]] && printf "%b
-" "  ${LIGHT_GREEN}[2]${PLAIN} 仅卸载 VLESS 节点 (保留 Hysteria 2 配置)"
-    printf "%b
-" "  ${LIGHT_GREEN}[3]${PLAIN} 卸载全部节点与订阅服务 (清空所有入站，保留 Sing-box 核心)"
+    [[ ${has_hy2:-0} -eq 1 ]] && echo -e " ${LIGHT_GREEN}[1]${PLAIN} 仅卸载 Hysteria 2 节点 (保留 VLESS 配置)"
+    [[ ${has_vless:-0} -eq 1 ]] && echo -e " ${LIGHT_GREEN}[2]${PLAIN} 仅卸载 VLESS 节点 (保留 Hysteria 2 配置)"
+    echo -e " ${LIGHT_GREEN}[3]${PLAIN} 卸载全部节点与订阅服务 (清空所有入站，保留 Sing-box 核心)"
     echo ""
-    printf "%b
-" "  ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
+    echo -e " ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
     read rm_choice || return
 
-    case $rm_choice in
-        1)
-            [[ $has_hy2 -eq 0 ]] && return
-            if [[ $has_vless -eq 0 ]]; then
-                yellow "  [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
-                clean_env "keep_core"
-                green "  [✔] Hysteria 2 节点及关联服务已成功卸载！(核心已保留)"
-            else
-                if ! _begin_singbox_config_transaction; then red " [错误] 无法创建卸载事务备份。"; return 1; fi
+    _remove_single_node_safe() {
+        local tag="$1"
+        local title="$2"
+        local tmp="/tmp/sb_remove_${tag}.$$.json"
+        local bak="/etc/sing-box/config.json.bak.remove-${tag}.$(date +%F-%H%M%S)"
+
+        if [[ ! -f /etc/sing-box/config.json ]]; then
+            red " [错误] 未找到 /etc/sing-box/config.json，无法卸载节点。"
+            return 1
+        fi
+
+        cp -a /etc/sing-box/config.json "$bak" || {
+            red " [错误] 无法创建卸载前备份。"
+            return 1
+        }
+
+        yellow " 正在卸载 ${title} 节点..."
+
+        if [[ "$tag" == "hy2-in" ]]; then
             disable_hy2_port_hopping "quiet" || true
-                close_port_by_tag "hy2-in"
-                rm -f /etc/sing-box/hy2_name.txt /etc/sing-box/hy2_hop_ports.txt
-            jq 'def _has_inbound($tag): (.inbound? // empty) as $in | if (($in|type) == "array") then (($in | index($tag)) != null) elif (($in|type) == "string") then ($in == $tag) else false end; del(.inbounds[]? | select(.tag=="hy2-in")) | del(.route.rules[]? | select(_has_inbound("hy2-in")))' /etc/sing-box/config.json > /tmp/sb_tmp.json && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json || { red " [✘] Hysteria 2 节点配置移除失败。"; return 1; }
-                generate_client_configs
-                restart_singbox_checked
-                green "  [✔] Hysteria 2 节点已成功卸载！"
+            close_port_by_tag "hy2-in" || true
+            rm -f /etc/sing-box/hy2_name.txt /etc/sing-box/hy2_hop_ports.txt
+        elif [[ "$tag" == "vless-in" ]]; then
+            close_port_by_tag "vless-in" || true
+            rm -f /etc/sing-box/vless_name.txt /etc/sing-box/vless_sni.txt /etc/sing-box/reality_pub.txt /etc/sing-box/reality_priv.txt
+        fi
+
+        if ! jq --arg tag "$tag" '
+            def _has_inbound($tag):
+                (.inbound? // empty) as $in
+                | if (($in | type) == "array") then (($in | index($tag)) != null)
+                  elif (($in | type) == "string") then ($in == $tag)
+                  else false end;
+
+            del(.inbounds[]? | select(.tag == $tag))
+            | if ((.route.rules? | type) == "array")
+              then .route.rules |= map(select((_has_inbound($tag) | not)))
+              else .
+              end
+        ' /etc/sing-box/config.json > "$tmp"; then
+            rm -f "$tmp"
+            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
+            red " [错误] 生成卸载后的 Sing-box 配置失败，已回滚。"
+            return 1
+        fi
+
+        if [[ ! -s "$tmp" ]] || ! jq -e empty "$tmp" >/dev/null 2>&1; then
+            rm -f "$tmp"
+            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
+            red " [错误] 卸载后的 JSON 配置无效，已回滚。"
+            return 1
+        fi
+
+        mv -f "$tmp" /etc/sing-box/config.json || {
+            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
+            red " [错误] 无法写入新配置，已回滚。"
+            return 1
+        }
+
+        _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+
+        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/tmp/sb_remove_check.log 2>&1; then
+            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+            red " [错误] 卸载后的 Sing-box 配置校验失败，已回滚。"
+            cat /tmp/sb_remove_check.log 2>/dev/null || true
+            return 1
+        fi
+
+        if ! restart_singbox_checked; then
+            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+            restart_singbox_checked >/dev/null 2>&1 || true
+            red " [错误] 卸载后 Sing-box 重启失败，已回滚。"
+            return 1
+        fi
+
+        generate_client_configs || yellow " [提示] 节点已卸载，但订阅刷新失败；请稍后进入菜单 [3] 查看订阅时自动刷新。"
+
+        rm -f "$bak" 2>/dev/null || true
+        green " [✔] ${title} 节点已成功卸载！"
+        return 0
+    }
+
+    case "$rm_choice" in
+        1)
+            [[ ${has_hy2:-0} -eq 0 ]] && return
+            if [[ ${has_vless:-0} -eq 0 ]]; then
+                yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
+                clean_env "keep_core"
+                green " [✔] Hysteria 2 节点及关联服务已成功卸载！(核心已保留)"
+            else
+                _remove_single_node_safe "hy2-in" "Hysteria 2" || return 1
             fi
             sleep 2
             ;;
         2)
-            [[ $has_vless -eq 0 ]] && return
-            if [[ $has_hy2 -eq 0 ]]; then
-                yellow "  [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
+            [[ ${has_vless:-0} -eq 0 ]] && return
+            if [[ ${has_hy2:-0} -eq 0 ]]; then
+                yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
                 clean_env "keep_core"
-                green "  [✔] VLESS 节点及关联服务已成功卸载！(核心已保留)"
+                green " [✔] VLESS 节点及关联服务已成功卸载！(核心已保留)"
             else
-                if ! _begin_singbox_config_transaction; then red " [错误] 无法创建卸载事务备份。"; return 1; fi
-            close_port_by_tag "vless-in"
-                rm -f /etc/sing-box/vless_name.txt /etc/sing-box/vless_sni.txt /etc/sing-box/reality_pub.txt
-            jq 'def _has_inbound($tag): (.inbound? // empty) as $in | if (($in|type) == "array") then (($in | index($tag)) != null) elif (($in|type) == "string") then ($in == $tag) else false end; del(.inbounds[]? | select(.tag=="vless-in")) | del(.route.rules[]? | select(_has_inbound("vless-in")))' /etc/sing-box/config.json > /tmp/sb_tmp.json && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json || { red " [✘] VLESS 节点配置移除失败。"; return 1; }
-                generate_client_configs
-                restart_singbox_checked
-                green "  [✔] VLESS 节点已成功卸载！"
+                _remove_single_node_safe "vless-in" "VLESS" || return 1
             fi
             sleep 2
             ;;
         3)
             clean_env "keep_core"
-            green "  [✔] 所有节点配置、订阅及防火墙规则已被彻底清理！(核心已保留)"
+            green " [✔] 所有节点配置、订阅及防火墙规则已被彻底清理！(核心已保留)"
             sleep 2
             ;;
-        0) return ;;
+        0)
+            return
+            ;;
+        *)
+            red " 输入无效"
+            sleep 1
+            return
+            ;;
     esac
 }
+
 
 global_uninstall() {
     echo ""
