@@ -52,7 +52,7 @@ remove_node() {
             else
                 disable_hy2_port_hopping "quiet" || true
                 close_port_by_tag "hy2-in"
-                jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
+                jq_update_singbox_config 'del(.inbounds[] | select(.tag=="hy2-in"))' || { red " [✘] Hysteria 2 节点配置移除失败。"; return 1; }
                 generate_client_configs
                 restart_singbox_checked
                 green "  [✔] Hysteria 2 节点已成功卸载！"
@@ -67,7 +67,7 @@ remove_node() {
                 green "  [✔] VLESS 节点及关联服务已成功卸载！(核心已保留)"
             else
                 close_port_by_tag "vless-in"
-                jq 'del(.inbounds[] | select(.tag=="vless-in"))' /etc/sing-box/config.json > /tmp/sb.json && [ -s /tmp/sb.json ] && mv /tmp/sb.json /etc/sing-box/config.json
+                jq_update_singbox_config 'del(.inbounds[] | select(.tag=="vless-in"))' || { red " [✘] VLESS 节点配置移除失败。"; return 1; }
                 generate_client_configs
                 restart_singbox_checked
                 green "  [✔] VLESS 节点已成功卸载！"
@@ -125,7 +125,9 @@ edit_config() {
     echo -en " ${LIGHT_YELLOW} ▶ 是否需要修改配置文件？(y/n) [默认: n]: ${PLAIN}"
     read edit_choice || exit 1
     if [[ "$edit_choice" == "y" || "$edit_choice" == "Y" ]]; then
-        cp /etc/sing-box/config.json /tmp/config.json.bak
+        local config_bak
+  config_bak="$(mktemp /etc/sing-box/config.json.bak.XXXXXX)" || { red " [✘] 无法创建配置备份文件。"; return 1; }
+  cp -a /etc/sing-box/config.json "$config_bak"
         
         if command -v nano >/dev/null; then
             nano /etc/sing-box/config.json
@@ -139,7 +141,7 @@ edit_config() {
         if ! jq . /etc/sing-box/config.json >/dev/null 2>&1; then
             red "  [致命错误] 修改后的配置文件不符合 JSON 规范，已被底座拦截！"
             yellow "  正在为您执行自动回滚 (Rollback)..."
-            mv /tmp/config.json.bak /etc/sing-box/config.json
+            mv -f -- "$config_bak" /etc/sing-box/config.json
             sleep 3
         else
             restart_singbox_checked
@@ -149,7 +151,7 @@ edit_config() {
                 generate_client_configs
             else
                 red "  [✘] 核心拒绝启动！已恢复修改前的配置。"
-                mv /tmp/config.json.bak /etc/sing-box/config.json
+                mv -f -- "$config_bak" /etc/sing-box/config.json
                 svc_stop sing-box
                 svc_start sing-box
             fi
@@ -2026,3 +2028,30 @@ _modify_sub_port() {
     echo -e "  \033[1;32m[✔] 在线订阅分发 Web 端口已成功修改为 [ $new_port ]！\033[0m\n"
     read -n 1 -s -r -p "  按任意键返回..."
 }
+
+# HY2_NO_MAIN_UI_COMPAT_V2_BEGIN
+# 后台兼容函数：不修改主界面 UI，只保证菜单原有入口不会 command not found。
+config_modify_menu() {
+  if declare -F edit_config >/dev/null 2>&1; then
+    edit_config "$@"
+    return $?
+  fi
+
+  red " [✘] 配置编辑函数 edit_config 未找到。"
+  yellow " [提示] 请检查 lib/06_panel_tools.sh 是否完整导入。"
+  return 1
+}
+
+# 如果菜单里存在 WARP 入口但当前代码未实现函数，给出友好提示，避免直接崩溃。
+# 不修改菜单显示，不改变主界面 UI。
+if ! declare -F warp_ipv6_route_menu >/dev/null 2>&1; then
+  warp_ipv6_route_menu() {
+    echo ""
+    red " [✘] 当前代码未包含 WARP IPv6 域名分流实现。"
+    yellow " [提示] 请补充 WARP 模块，或执行在线更新后再使用该功能。"
+    echo ""
+    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+    read _ || true
+  }
+fi
+# HY2_NO_MAIN_UI_COMPAT_V2_END

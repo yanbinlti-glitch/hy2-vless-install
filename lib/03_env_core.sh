@@ -16,27 +16,43 @@ ensure_foundation
 #  4. 自动换源、依赖环境检查、核心拉取与节点探测
 # =================================================================
 run_with_timeout() {
-    local seconds="$1"
-    shift
+  local seconds="$1"
+  shift
+
+  local cmd="$*"
+  local label="${HY2_PROGRESS_LABEL:-$(hy2_cmd_label "$cmd" 2>/dev/null || echo "执行系统命令")}"
+
+  if declare -F run_quiet_shell >/dev/null 2>&1; then
+    run_quiet_shell "$label" "$seconds" "$cmd"
+  else
     if command -v timeout >/dev/null 2>&1; then
-        timeout "$seconds" bash -c "$*"
+      timeout "$seconds" bash -c "$cmd" >/dev/null 2>&1
     else
-        bash -c "$*"
+      bash -c "$cmd" >/dev/null 2>&1
     fi
+  fi
 }
 
 run_logged_with_timeout() {
-    local seconds="$1"
-    local logfile="$2"
-    shift 2
-    : > "$logfile"
+  local seconds="$1"
+  local logfile="$2"
+  shift 2
+
+  local cmd="$*"
+  local label="${HY2_PROGRESS_LABEL:-$(hy2_cmd_label "$cmd" 2>/dev/null || echo "执行系统命令")}"
+
+  : > "$logfile"
+  chmod 600 "$logfile" 2>/dev/null || true
+
+  if declare -F hy2_progress_run_shell_with_log >/dev/null 2>&1; then
+    hy2_progress_run_shell_with_log "$label" "$logfile" "$seconds" "$cmd"
+  else
     if command -v timeout >/dev/null 2>&1; then
-        timeout "$seconds" bash -c "$*" 2>&1 | tee -a "$logfile"
-        return ${PIPESTATUS[0]}
+      timeout "$seconds" bash -c "$cmd" >>"$logfile" 2>&1
     else
-        bash -c "$*" 2>&1 | tee -a "$logfile"
-        return ${PIPESTATUS[0]}
+      bash -c "$cmd" >>"$logfile" 2>&1
     fi
+  fi
 }
 
 pkg_update_fast_cmd() {
@@ -318,4 +334,3 @@ check_installed_nodes() {
         if jq -e '.inbounds[] | select(.tag=="vless-in")' /etc/sing-box/config.json >/dev/null 2>&1; then has_vless=1; fi
     fi
 }
-
