@@ -352,12 +352,12 @@ config_outbound() {
     fi
 
     echo ""
-    printf "%b " " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 智能分流代理 (仅 Netflix/ChatGPT 等流媒体走中转)${PLAIN}"
-    printf "%b " " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走落地中转)${PLAIN}"
-    printf "%b " " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}配置 指定节点中转 (仅让特定节点走落地中转)${PLAIN}"
-    printf "%b " " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
+    printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 智能分流代理 (仅 Netflix/ChatGPT 等流媒体走中转)${PLAIN}"
+    printf "%b\n" " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走落地中转)${PLAIN}"
+    printf "%b\n" " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}配置 指定节点中转 (仅让特定节点走落地中转)${PLAIN}"
+    printf "%b\n" " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
     echo ""
-    printf "%b " " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
+    printf "%b\n" " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
     read out_choice || {
@@ -369,9 +369,9 @@ config_outbound() {
         1|2|3)
             echo ""
             yellow " ▶ 请选择落地代理协议类型:"
-            printf "%b " " ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
-            printf "%b " " ${LIGHT_GREEN}[2]${PLAIN} HTTP"
-            printf "%b " " ${LIGHT_GREEN}[3]${PLAIN} HTTPS (HTTP + TLS)"
+            printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
+            printf "%b\n" " ${LIGHT_GREEN}[2]${PLAIN} HTTP"
+            printf "%b\n" " ${LIGHT_GREEN}[3]${PLAIN} HTTPS (HTTP + TLS)"
             printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
             read proxy_type_choice || proxy_type_choice=1
             [[ -z "$proxy_type_choice" ]] && proxy_type_choice=1
@@ -432,8 +432,8 @@ config_outbound() {
                 if [[ "$has_hy2_cfg" -eq 1 && "$has_vless_cfg" -eq 1 ]]; then
                     echo ""
                     yellow " ▶ 请选择要中转的节点:"
-                    printf "%b " " ${LIGHT_GREEN}[1]${PLAIN} 仅中转 Hysteria 2"
-                    printf "%b " " ${LIGHT_GREEN}[2]${PLAIN} 仅中转 VLESS"
+                    printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} 仅中转 Hysteria 2"
+                    printf "%b\n" " ${LIGHT_GREEN}[2]${PLAIN} 仅中转 VLESS"
                     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2]: ${PLAIN}"
                     read inbound_choice || inbound_choice=1
 
