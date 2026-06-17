@@ -39,7 +39,7 @@ remove_node() {
     echo ""
     echo -e "  ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read rm_choice || return
 
     case $rm_choice in
@@ -86,7 +86,7 @@ remove_node() {
 global_uninstall() {
     echo ""
     red "  [警告] 这将彻底删除 Sing-box 核心、所有节点配置及 666 快捷命令！"
-    echo -en " ${LIGHT_YELLOW} ▶ 是否确认全局卸载并回归没装脚本的状态？(y/n) [默认: n]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 是否确认全局卸载并回归没装脚本的状态？(y/n) [默认: n]: ${PLAIN}"
     read confirm || confirm="n"
     [[ -z "$confirm" ]] && confirm="n"
     
@@ -122,7 +122,7 @@ edit_config() {
     yellow "  [警告] 如果您修改了 listen_port (主端口)，"
     yellow "          脚本将无法自动更新防火墙规则！修改后请务必自行放行新端口。"
     print_line
-    echo -en " ${LIGHT_YELLOW} ▶ 是否需要修改配置文件？(y/n) [默认: n]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 是否需要修改配置文件？(y/n) [默认: n]: ${PLAIN}"
     read edit_choice || exit 1
     if [[ "$edit_choice" == "y" || "$edit_choice" == "Y" ]]; then
         local config_bak
@@ -158,7 +158,7 @@ edit_config() {
         fi
     fi
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
     read temp
 }
 
@@ -228,7 +228,7 @@ config_outbound() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -238,7 +238,7 @@ config_outbound() {
             echo -e "    ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
             echo -e "    ${LIGHT_GREEN}[2]${PLAIN} HTTP"
             echo -e "    ${LIGHT_GREEN}[3]${PLAIN} HTTPS (HTTP + TLS)"
-            echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
             read proxy_type_choice || proxy_type_choice=1
             [[ -z "$proxy_type_choice" ]] && proxy_type_choice=1
             
@@ -252,21 +252,21 @@ config_outbound() {
 
             echo ""
             yellow "  ▶ 请输入落地代理节点信息:"
-            echo -en " ${LIGHT_YELLOW} ▶ IP 或 域名: ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ IP 或 域名: ${PLAIN}"
             read proxy_addr || exit 1
             [[ -z "$proxy_addr" ]] && return
             
-            echo -en " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
             read proxy_port || exit 1
             if [[ ! "$proxy_port" =~ ^[0-6]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
                 red "  [错误] 端口格式无效！"
                 sleep 2; return
             fi
             
-            echo -en " ${LIGHT_YELLOW} ▶ 用户名 (留空为无鉴权): ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ 用户名 (留空为无鉴权): ${PLAIN}"
             read proxy_user || proxy_user=""
             
-            echo -en " ${LIGHT_YELLOW} ▶ 密码 (留空为无鉴权): ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ 密码 (留空为无鉴权): ${PLAIN}"
             read proxy_pass || proxy_pass=""
 
             local target_inbound=""
@@ -277,7 +277,7 @@ config_outbound() {
                     yellow "  ▶ 请选择要中转的节点:"
                     echo -e "    ${LIGHT_GREEN}[1]${PLAIN} 仅中转 Hysteria 2"
                     echo -e "    ${LIGHT_GREEN}[2]${PLAIN} 仅中转 VLESS"
-                    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2]: ${PLAIN}"
+                    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2]: ${PLAIN}"
                     read inbound_choice
                     if [[ "$inbound_choice" == "1" ]]; then target_inbound="hy2-in"; else target_inbound="vless-in"; fi
                 elif [[ ${has_hy2:-0} -eq 1 ]]; then
@@ -462,7 +462,7 @@ config_outbound() {
     esac
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"
     read temp
 }
 
@@ -500,7 +500,7 @@ showconf() {
     yellow "  正在刷新订阅与直连节点信息..."
     if ! ensure_subscription_ready; then
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
         read temp
         return
     fi
@@ -545,7 +545,7 @@ showconf() {
     echo -e "    ${LIGHT_GREEN}如果 Hy2 节点无法连接，请确认 VPS 安全组已放行对应 UDP 主端口。${PLAIN}"
     echo -e "    ${LIGHT_PURPLE}====================================================${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
     read temp
 }
 
@@ -628,7 +628,7 @@ EOF
         red "  [错误] BBR 开启失败，当前内核或容器环境受限！"
     fi
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
     read temp
 }
 
@@ -645,7 +645,7 @@ singbox_switch() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
         1 ) restart_singbox_checked && green "  Sing-box 核心已启动/重载！"; sleep 2 ;;
@@ -670,14 +670,14 @@ quick_repair_and_status() {
         return
     fi
 
-    ensure_singbox_core || { echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"; read temp; return; }
+    ensure_singbox_core || { printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"; read temp; return; }
     normalize_singbox_config
     echo ""
     yellow "  正在执行 sing-box 配置校验..."
     if ! /usr/local/bin/sing-box check -c /etc/sing-box/config.json; then
         red "  [✘] 配置仍未通过，请复制上面的错误发给我。"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"
         read temp
         return
     fi
@@ -720,7 +720,7 @@ quick_repair_and_status() {
     echo ""
     yellow "  订阅与节点信息可在主菜单 [6] 查看。"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
     read temp
 }
 
@@ -790,7 +790,7 @@ modify_vless_self_signed_cert() {
 
     yellow " 当前 VLESS 伪装域名 / SNI: $current_sni"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入新的 VLESS 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的 VLESS 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
     read new_sni || return
     [[ -z "$new_sni" ]] && new_sni="$current_sni"
 
@@ -845,7 +845,7 @@ modify_vless_self_signed_cert() {
     fi
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
     read temp
 }
 
@@ -898,7 +898,7 @@ modify_hy2_self_signed_cert() {
     green " [✔] Hy2 自签名证书已更新，订阅已刷新。"
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
     read temp
 }
 
@@ -1085,7 +1085,7 @@ enable_hy2_port_hopping() {
     yellow " 示例: 20000-30000"
     yellow " 注意: VPS 安全组也需要放行这个 UDP 端口段。"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入 Hy2 跳跃端口段 [0 关闭跳跃端口]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入 Hy2 跳跃端口段 [0 关闭跳跃端口]: ${PLAIN}"
     read hop_range || return
 
     hop_range="$(echo "$hop_range" | tr -d '[:space:]')"
@@ -1094,7 +1094,7 @@ enable_hy2_port_hopping() {
         disable_hy2_port_hopping
         generate_client_configs
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
         read temp
         return
     fi
@@ -1117,7 +1117,7 @@ enable_hy2_port_hopping() {
     range_size=$((end_port - start_port + 1))
     if (( range_size > 10000 )); then
         yellow " [提示] 端口段较大: $range_size 个 UDP 端口。"
-        echo -en " ${LIGHT_YELLOW} ▶ 是否继续？(y/n) [默认: n]: ${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 是否继续？(y/n) [默认: n]: ${PLAIN}"
         read confirm_large || confirm_large="n"
         [[ -z "$confirm_large" ]] && confirm_large="n"
         if [[ "$confirm_large" != "y" && "$confirm_large" != "Y" ]]; then
@@ -1145,7 +1145,7 @@ enable_hy2_port_hopping() {
     fi
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
     read temp
 }
 
@@ -1168,7 +1168,7 @@ modify_node_name() {
         yellow " 检测到您同时部署了 Hy2 和 VLESS，请选择要修改的节点："
         echo -e "   ${LIGHT_GREEN}[1]${PLAIN} Hysteria 2"
         echo -e "   ${LIGHT_GREEN}[2]${PLAIN} VLESS"
-        echo -en " ${LIGHT_YELLOW} ▶ 请选择 [1-2]: ${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 请选择 [1-2]: ${PLAIN}"
         read target_node
         [[ "$target_node" != "1" && "$target_node" != "2" ]] && { red " 输入无效"; sleep 1; return; }
     elif [[ $has_hy2 -eq 1 ]]; then
@@ -1189,7 +1189,7 @@ modify_node_name() {
     fi
 
     yellow " 当前 $protocol 节点名称: $current_name"
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入新的节点名称 (全面支持中文、空格、括号等特殊符号): ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的节点名称 (全面支持中文、空格、括号等特殊符号): ${PLAIN}"
     read new_name || return
     [[ -z "$new_name" ]] && return
 
@@ -1205,7 +1205,7 @@ modify_node_name() {
     generate_client_configs
     green " [✔] $protocol 节点名称已成功修改为: $new_name (订阅已同步刷新)"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
     read temp
 }
 
@@ -1235,12 +1235,12 @@ set_node_expiration() {
     echo -e "   ${LIGHT_GREEN}[3]${PLAIN} 立即模拟到期触发 (开发排障测试)"
     echo -e "   ${LIGHT_GREEN}[0]${PLAIN} 返回上级菜单"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请选择操作 [0-3]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请选择操作 [0-3]: ${PLAIN}"
     read exp_choice
     
     case $exp_choice in
         1)
-            echo -en "\n ${LIGHT_YELLOW} ▶ 请输入有效的限时天数 (正整数，如 30): ${PLAIN}"
+            printf "%b" "\n ${LIGHT_YELLOW} ▶ 请输入有效的限时天数 (正整数，如 30): ${PLAIN}"
             read exp_days
             if [[ ! "$exp_days" =~ ^[0-6]+$ ]] || [ "$exp_days" -lt 1 ]; then
                 red " [错误] 输入格式无效！必须是大于0的正整数。"
@@ -1273,7 +1273,7 @@ set_node_expiration() {
             ;;
     esac
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回...${PLAIN}"
     read temp
 }
 
@@ -1293,7 +1293,7 @@ config_modify_menu() {
 
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
@@ -1458,7 +1458,7 @@ install_or_repair_warp_ipv6_iface() {
     yellow " 将使用 Table = off + fwmark 策略路由，避免接管系统默认 IPv6。"
     echo ""
 
-    echo -en " ${LIGHT_YELLOW} ▶ 是否继续安装 / 修复 WARP IPv6 接口？(y/n) [默认: y]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 是否继续安装 / 修复 WARP IPv6 接口？(y/n) [默认: y]: ${PLAIN}"
     read confirm_install || confirm_install="y"
     [[ -z "$confirm_install" ]] && confirm_install="y"
 
@@ -1655,7 +1655,7 @@ install_or_repair_warp_ipv6_iface() {
     echo ""
     yellow " 下一步：返回菜单选择 [1] 开启 / 修改 WARP IPv6 域名分流，接口名填写: $iface"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
     read temp
 }
 
@@ -1695,7 +1695,7 @@ warp_ipv6_route_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
         read warp_ipv6_choice || return
 
         case "$warp_ipv6_choice" in
@@ -1734,7 +1734,7 @@ enable_warp_ipv6_route() {
     yellow " 常见接口名: wgcf / warp / CloudflareWARP"
     echo ""
 
-    echo -en " ${LIGHT_YELLOW} ▶ WARP IPv6 接口名 [默认: $current_iface]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ WARP IPv6 接口名 [默认: $current_iface]: ${PLAIN}"
     read iface || return
     [[ -z "$iface" ]] && iface="$current_iface"
 
@@ -1752,7 +1752,7 @@ enable_warp_ipv6_route() {
     fi
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 分流域名，逗号分隔 [默认: $current_domains]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 分流域名，逗号分隔 [默认: $current_domains]: ${PLAIN}"
     read domains || return
     [[ -z "$domains" ]] && domains="$current_domains"
 
@@ -1778,7 +1778,7 @@ enable_warp_ipv6_route() {
     fi
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 是否测试该接口 IPv6 出口？(y/n) [默认: y]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 是否测试该接口 IPv6 出口？(y/n) [默认: y]: ${PLAIN}"
     read test_choice || test_choice="y"
     [[ -z "$test_choice" ]] && test_choice="y"
 
@@ -1858,7 +1858,7 @@ enable_warp_ipv6_route() {
     yellow " 域名: $domains"
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
     read temp
 }
 
@@ -1915,7 +1915,7 @@ disable_warp_ipv6_route() {
     green " [✔] WARP IPv6 域名分流已关闭。"
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
     read temp
 }
 
@@ -1940,7 +1940,7 @@ show_warp_ipv6_route() {
     jq '.route.rules[]? | select(.outbound=="warp-ipv6")' /etc/sing-box/config.json 2>/dev/null || true
 
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
     read temp
 }
 

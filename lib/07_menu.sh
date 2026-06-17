@@ -553,7 +553,7 @@ menu() {
   echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
   echo ""
-  echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-11]: ${PLAIN}"
+  printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-11]: ${PLAIN}"
 
   read menuInput || exit 1
 

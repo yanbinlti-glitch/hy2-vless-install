@@ -67,7 +67,7 @@ inst_cert() {
     echo -e "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
     echo -e "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
     echo -e "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [1-4] (默认1): ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-4] (默认1): ${PLAIN}"
     read sni_choice || sni_choice=1
     [[ -z "$sni_choice" ]] && sni_choice=1
     
@@ -76,7 +76,7 @@ inst_cert() {
         2) cert_sni="www.apple.com" ;;
         3) cert_sni="www.microsoft.com" ;;
         4)
-            echo -en " ${LIGHT_YELLOW} ▶ 请输入自定义伪装域名 (如 github.com): ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入自定义伪装域名 (如 github.com): ${PLAIN}"
             read cert_sni || cert_sni="www.bing.com"
             [[ -z "$cert_sni" ]] && cert_sni="www.bing.com"
             ;;
@@ -170,7 +170,7 @@ inst_sub_port(){
     [[ -f /etc/sing-box/sub_port.txt ]] && history_port=$(cat /etc/sing-box/sub_port.txt)
     
     if [[ -n "$history_port" ]]; then
-        echo -en " ${LIGHT_YELLOW} ▶ 检测到历史订阅端口 [${history_port}]，是否沿用以保持订阅链接不变？(y/n) [默认: y]: ${PLAIN}"
+        printf "%b" " ${LIGHT_YELLOW} ▶ 检测到历史订阅端口 [${history_port}]，是否沿用以保持订阅链接不变？(y/n) [默认: y]: ${PLAIN}"
         read use_hist || use_hist="y"
         [[ -z "$use_hist" ]] && use_hist="y"
         if [[ "$use_hist" == "y" || "$use_hist" == "Y" ]]; then
@@ -181,7 +181,7 @@ inst_sub_port(){
         fi
     fi
 
-    echo -en " ${LIGHT_YELLOW} ▶ 设置 Nginx 聚合订阅服务端口 [1024-65535] (回车随机): ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 设置 Nginx 聚合订阅服务端口 [1024-65535] (回车随机): ${PLAIN}"
     read sub_port_input || exit 1
     [[ -z $sub_port_input ]] && sub_port_input=$(shuf -i 10000-30000 -n 1)
     
@@ -1177,18 +1177,18 @@ port="$READ_PORT_RESULT"
 green " 节点主端口已设置为: $port (UDP)"
 open_port "$port" "udp" "hy2-in"
 echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 设置节点连接密码 (回车自动生成): ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 设置节点连接密码 (回车自动生成): ${PLAIN}"
     read auth_pwd || exit 1
     [[ -z $auth_pwd ]] && auth_pwd=$(gen_random_str 16)
     
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Hy2_Node]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Hy2_Node]: ${PLAIN}"
     read custom_node_name || exit 1
     [[ -z $custom_node_name ]] && custom_node_name="Hy2_Node"
     echo "$custom_node_name" > /etc/sing-box/hy2_name.txt.tmp && mv -f /etc/sing-box/hy2_name.txt.tmp /etc/sing-box/hy2_name.txt
     
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 是否开启防阻断 Salamander 混淆？(y/n) [默认: y]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 是否开启防阻断 Salamander 混淆？(y/n) [默认: y]: ${PLAIN}"
     read enable_obfs || exit 1
     [[ -z $enable_obfs ]] && enable_obfs="y"
     local obfs_pwd=""
@@ -1274,7 +1274,7 @@ echo ""
     echo "$v_public_key" > /etc/sing-box/reality_pub.txt.tmp && mv -f /etc/sing-box/reality_pub.txt.tmp /etc/sing-box/reality_pub.txt
     
     printf "%s\n" ""
-    echo -en " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Vless_Reality_Node]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Vless_Reality_Node]: ${PLAIN}"
     read custom_node_name || exit 1
     [[ -z $custom_node_name ]] && custom_node_name="Vless_Reality_Node"
     echo "$custom_node_name" > /etc/sing-box/vless_name.txt.tmp && mv -f /etc/sing-box/vless_name.txt.tmp /etc/sing-box/vless_name.txt
@@ -1358,7 +1358,7 @@ inst_singbox() {
     echo -e "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}"
     echo -e "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2] (默认1): ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2] (默认1): ${PLAIN}"
     read protoInput || protoInput=1
     [[ -z "$protoInput" ]] && protoInput=1
 

@@ -99,7 +99,7 @@ version_gt() {
 
 pause_after_update() {
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回菜单...${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回菜单...${PLAIN}"
     read -r _ || true
 }
 
@@ -193,7 +193,7 @@ self_update() {
         return 0
     fi
 
-    echo -en " ${LIGHT_YELLOW} ▶ 检测到新版本，是否更新？(y/n) [默认: y]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 检测到新版本，是否更新？(y/n) [默认: y]: ${PLAIN}"
     read -r confirm_update || confirm_update="y"
     [[ -z "$confirm_update" ]] && confirm_update="y"
 

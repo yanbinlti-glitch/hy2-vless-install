@@ -35,7 +35,7 @@ _smart_run() {
     # 清理当前行终端残留
     printf "
 [K"
-    echo -en " [1;36m▶ ${msg}...[0m "
+    printf "%b" " [1;36m▶ ${msg}...[0m "
     
     # 幽灵进程接管：将真实指令打入黑洞并在后台执行，完美规避 SSH 断流
     "$@" >"$HY2_VLESS_RUN_LOG" 2>&1 &
@@ -92,7 +92,7 @@ _smart_install() {
 
     # 清理多余空格并截断超长包名用于 UI 展示
     local display_pkgs=$(echo "$pkgs" | tr -s ' ' | cut -c 1-30)
-    echo -en " [1;36m▶ 正在静默极速安装底层依赖: [0;32m${display_pkgs}...[0m "
+    printf "%b" " [1;36m▶ 正在静默极速安装底层依赖: [0;32m${display_pkgs}...[0m "
     
     # 防卡顿：开启子进程静默重定向安装
     (
