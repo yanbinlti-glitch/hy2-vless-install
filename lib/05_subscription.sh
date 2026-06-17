@@ -189,7 +189,7 @@ generate_client_configs() {
           jq -cn \
             --arg tag "$node_name" \
             --arg server "$yaml_json_ip" \
-            --argjson port "$bind_port" \
+            --arg port "$bind_port" \
             --arg hop_ports "$hop_ports" \
             --arg password "$pwd" \
             --arg sni "$sni" \
@@ -200,7 +200,7 @@ generate_client_configs() {
                 type: "hysteria2",
                 tag: $tag,
                 server: $server,
-                server_port: $port,
+                server_port: ($port | tonumber),
                 password: $password,
                 tls: {
                   enabled: true,
@@ -215,7 +215,7 @@ generate_client_configs() {
               + (
                 if $hop_ports != ""
                 then {
-                  server_ports: [$hop_ports]
+                  server_ports: ($hop_ports | split(",") | map(select(length > 0)))
                 }
                 else {}
                 end
