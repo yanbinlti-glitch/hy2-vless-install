@@ -1191,7 +1191,7 @@ hop_range="$(cat "$range_file" 2>/dev/null | tr -d '[:space:]')"
 main_port="$(cat "$main_file" 2>/dev/null | tr -d '[:space:]')"
 colon_range="${hop_range/-/:}"
 
-[[ "$hop_range" =~ ^[0-6]+-[0-6]+$ ]] || exit 0
+[[ "$hop_range" =~ ^[0-9]+-[0-9]+$ ]] || exit 0
 [[ "$main_port" =~ ^[0-9]+$ ]] || exit 0
 
 for tool in iptables ip6tables; do
@@ -1317,7 +1317,7 @@ enable_hy2_port_hopping() {
         return
     fi
 
-    if [[ ! "$hop_range" =~ ^([0-6]+)-([0-6]+)$ ]]; then
+    if [[ ! "$hop_range" =~ ^([0-9]+)-([0-9]+)$ ]]; then
         red " [错误] 端口段格式错误，应为 20000-30000。"
         sleep 2
         return
