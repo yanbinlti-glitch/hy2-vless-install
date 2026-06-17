@@ -47,29 +47,33 @@ remove_node() {
     _remove_single_node_safe() {
         local tag="$1"
         local title="$2"
-        local tmp="/tmp/sb_remove_${tag}.$$.json"
-        local bak="/etc/sing-box/config.json.bak.remove-${tag}.$(date +%F-%H%M%S)"
+        local tmp_dir="${HY2_CONFIG_TMP_DIR:-/etc/sing-box/.tmp}"
+        local tmp=""
 
         if [[ ! -f /etc/sing-box/config.json ]]; then
             red " [错误] 未找到 /etc/sing-box/config.json，无法卸载节点。"
             return 1
         fi
 
-        cp -a /etc/sing-box/config.json "$bak" || {
-            red " [错误] 无法创建卸载前备份。"
+        if ! _prepare_config_tmp_dir >/dev/null 2>&1; then
+            install -d -m 700 "$tmp_dir" 2>/dev/null || {
+                red " [错误] 无法准备配置临时目录。"
+                return 1
+            }
+        fi
+
+        tmp="$(mktemp "$tmp_dir/sb_remove_${tag}.XXXXXX")" || {
+            red " [错误] 无法创建卸载临时配置。"
             return 1
         }
 
-        yellow " 正在卸载 ${title} 节点..."
-
-        if [[ "$tag" == "hy2-in" ]]; then
-            disable_hy2_port_hopping "quiet" || true
-            close_port_by_tag "hy2-in" || true
-            rm -f /etc/sing-box/hy2_name.txt /etc/sing-box/hy2_hop_ports.txt
-        elif [[ "$tag" == "vless-in" ]]; then
-            close_port_by_tag "vless-in" || true
-            rm -f /etc/sing-box/vless_name.txt /etc/sing-box/vless_sni.txt /etc/sing-box/reality_pub.txt /etc/sing-box/reality_priv.txt
+        if ! _begin_singbox_config_transaction; then
+            rm -f "$tmp"
+            red " [错误] 无法创建卸载事务备份。"
+            return 1
         fi
+
+        yellow " 正在卸载 ${title} 节点..."
 
         if ! jq --arg tag "$tag" '
             def _has_inbound($tag):
@@ -85,45 +89,40 @@ remove_node() {
               end
         ' /etc/sing-box/config.json > "$tmp"; then
             rm -f "$tmp"
-            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
-            red " [错误] 生成卸载后的 Sing-box 配置失败，已回滚。"
+            _abort_singbox_config_update "生成卸载后的 Sing-box 配置失败"
             return 1
         fi
 
         if [[ ! -s "$tmp" ]] || ! jq -e empty "$tmp" >/dev/null 2>&1; then
             rm -f "$tmp"
-            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
-            red " [错误] 卸载后的 JSON 配置无效，已回滚。"
+            _abort_singbox_config_update "卸载后的 JSON 配置无效"
             return 1
         fi
 
-        mv -f "$tmp" /etc/sing-box/config.json || {
-            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
-            red " [错误] 无法写入新配置，已回滚。"
+        if ! mv -f "$tmp" /etc/sing-box/config.json; then
+            rm -f "$tmp"
+            _abort_singbox_config_update "无法写入卸载后的 Sing-box 配置"
             return 1
-        }
+        fi
 
         _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
 
-        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/tmp/sb_remove_check.log 2>&1; then
-            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
-            red " [错误] 卸载后的 Sing-box 配置校验失败，已回滚。"
-            cat /tmp/sb_remove_check.log 2>/dev/null || true
-            return 1
-        fi
-
         if ! restart_singbox_checked; then
-            mv -f "$bak" /etc/sing-box/config.json 2>/dev/null || true
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
-            restart_singbox_checked >/dev/null 2>&1 || true
-            red " [错误] 卸载后 Sing-box 重启失败，已回滚。"
+            red " [错误] 卸载后 Sing-box 重启失败，已自动回滚。"
             return 1
         fi
 
-        generate_client_configs || yellow " [提示] 节点已卸载，但订阅刷新失败；请稍后进入菜单 [3] 查看订阅时自动刷新。"
+        if [[ "$tag" == "hy2-in" ]]; then
+            disable_hy2_port_hopping "quiet" || true
+            close_port_by_tag "hy2-in" || true
+            rm -f /etc/sing-box/hy2_name.txt /etc/sing-box/hy2_hop_ports.txt
+        elif [[ "$tag" == "vless-in" ]]; then
+            close_port_by_tag "vless-in" || true
+            rm -f /etc/sing-box/vless_name.txt /etc/sing-box/vless_sni.txt /etc/sing-box/reality_pub.txt /etc/sing-box/reality_priv.txt
+        fi
 
-        rm -f "$bak" 2>/dev/null || true
+        generate_client_configs || yellow " [提示] 节点已卸载，但订阅刷新失败；请稍后进入菜单 [6] 查看订阅时自动刷新。"
+
         green " [✔] ${title} 节点已成功卸载！"
         return 0
     }
