@@ -135,7 +135,7 @@ read_free_port() {
   READ_PORT_RESULT=""
 
   while true; do
-    printf "%s\n" -en "$prompt"
+    printf "%b" "$prompt"
     read -r port || return 1
 
     if [[ -z "$port" ]]; then
