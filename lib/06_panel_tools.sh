@@ -836,8 +836,8 @@ modify_vless_self_signed_cert() {
     mv -f /tmp/sb_vless_reality.json /etc/sing-box/config.json
 
     if apply_singbox_config_with_rollback "$backup"; then
-        echo "$v_public_key" > /etc/sing-box/reality_pub.txt
-        echo "$new_sni" > /etc/sing-box/vless_sni.txt
+        printf "%s\n" "$v_public_key" > /etc/sing-box/reality_pub.txt.tmp && mv -f /etc/sing-box/reality_pub.txt.tmp /etc/sing-box/reality_pub.txt
+        printf "%s\n" "$new_sni" > /etc/sing-box/vless_sni.txt.tmp && mv -f /etc/sing-box/vless_sni.txt.tmp /etc/sing-box/vless_sni.txt
         generate_client_configs
         green " [✔] VLESS 证书伪装参数 / Reality 密钥已更新。"
     else
@@ -1132,8 +1132,8 @@ enable_hy2_port_hopping() {
         remove_hy2_port_hop_rules "$old_range" "$old_main"
     fi
 
-    echo "$hop_range" > /etc/sing-box/hy2_hop_ports.txt
-    echo "$main_port" > /etc/sing-box/hy2_hop_main_port.txt
+    printf "%s\n" "$hop_range" > /etc/sing-box/hy2_hop_ports.txt.tmp && mv -f /etc/sing-box/hy2_hop_ports.txt.tmp /etc/sing-box/hy2_hop_ports.txt
+    printf "%s\n" "$main_port" > /etc/sing-box/hy2_hop_main_port.txt.tmp && mv -f /etc/sing-box/hy2_hop_main_port.txt.tmp /etc/sing-box/hy2_hop_main_port.txt
 
     if apply_hy2_port_hop_rules "$hop_range" "$main_port"; then
         install_hy2_port_hop_service

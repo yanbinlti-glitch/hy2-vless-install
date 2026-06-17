@@ -285,12 +285,7 @@ main_status_landing_info() {
             echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} 获取归属地超时"
         fi
     else
-        local p_type=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json)
-        local p_server=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server' /etc/sing-box/config.json)
-        local p_port=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server_port' /etc/sing-box/config.json)
-        local p_user=$(jq -r '.outbounds[] | select(.tag=="proxy") | .username // empty' /etc/sing-box/config.json)
-        local p_pass=$(jq -r '.outbounds[] | select(.tag=="proxy") | .password // empty' /etc/sing-box/config.json)
-        local p_tls=$(jq -r '.outbounds[] | select(.tag=="proxy") | .tls.enabled // empty' /etc/sing-box/config.json)
+        eval "$(jq -r '.outbounds[] | select(.tag=="proxy") | @sh "local p_type=\(.type) p_server=\(.server) p_port=\(.server_port) p_user=\(.username // \"\") p_pass=\(.password // \"\") p_tls=\(.tls.enabled // \"\")"' /etc/sing-box/config.json 2>/dev/null)" 
         local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "分流")
         
         local proxy_url=""
@@ -341,12 +336,7 @@ main_status_landing_ip() {
             echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} 获取超时"
         fi
     else
-        local p_type=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
-        local p_server=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server' /etc/sing-box/config.json 2>/dev/null)
-        local p_port=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server_port' /etc/sing-box/config.json 2>/dev/null)
-        local p_user=$(jq -r '.outbounds[] | select(.tag=="proxy") | .username // empty' /etc/sing-box/config.json 2>/dev/null)
-        local p_pass=$(jq -r '.outbounds[] | select(.tag=="proxy") | .password // empty' /etc/sing-box/config.json 2>/dev/null)
-        local p_tls=$(jq -r '.outbounds[] | select(.tag=="proxy") | .tls.enabled // empty' /etc/sing-box/config.json 2>/dev/null)
+        eval "$(jq -r '.outbounds[] | select(.tag=="proxy") | @sh "local p_type=\(.type) p_server=\(.server) p_port=\(.server_port) p_user=\(.username // \"\") p_pass=\(.password // \"\") p_tls=\(.tls.enabled // \"\")"' /etc/sing-box/config.json 2>/dev/null)" 
         local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config.json >/dev/null 2>&1 && echo "全局" || echo "智能分流")
         
         local proxy_url=""

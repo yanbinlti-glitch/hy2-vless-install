@@ -61,7 +61,7 @@ inst_cert() {
     cert_path="/etc/sing-box/cert.crt"
     key_path="/etc/sing-box/private.key"
     
-    echo ""
+    printf "%s\n" ""
     yellow "  请选择您的安全伪装域名 (SNI):"
     echo -e "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com (推荐, 默认)"
     echo -e "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
@@ -87,7 +87,7 @@ inst_cert() {
     
     chmod 644 "$cert_path"
     chmod 600 "$key_path"
-    echo "$cert_sni" > /etc/sing-box/cert_sni.txt
+    echo "$cert_sni" > /etc/sing-box/cert_sni.txt.tmp && mv -f /etc/sing-box/cert_sni.txt.tmp /etc/sing-box/cert_sni.txt
     green "  自签证书 ($cert_sni) 生成并降权授权成功！"
 }
 
@@ -131,7 +131,7 @@ read_free_port() {
   READ_PORT_RESULT=""
 
   while true; do
-    echo -en "$prompt"
+    printf "%s\n" -en "$prompt"
     read -r port || return 1
 
     if [[ -z "$port" ]]; then
@@ -198,7 +198,7 @@ inst_sub_port(){
     done
     green " 订阅 HTTP 端口已设置为: $sub_port_input"
     open_port $sub_port_input "tcp" "sub"
-    echo "$sub_port_input" > /etc/sing-box/sub_port.txt
+    echo "$sub_port_input" > /etc/sing-box/sub_port.txt.tmp && mv -f /etc/sing-box/sub_port.txt.tmp /etc/sing-box/sub_port.txt
 }
 
 _ensure_singbox_service_account() {
@@ -1169,7 +1169,7 @@ inst_hysteria2() {
         build_base_json
     fi
     
-    echo ""
+    printf "%s\n" ""
     print_line
     yellow "  Hysteria 2 主端口与网络配置"
     read_free_port " ${LIGHT_YELLOW} ▶ 设置 Hysteria 2 主端口 (UDP) [10000-65535] (回车随机): ${PLAIN}" "random" 10000 65535 "udp" "Hysteria 2 主端口" || return 1
@@ -1185,7 +1185,7 @@ echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Hy2_Node]: ${PLAIN}"
     read custom_node_name || exit 1
     [[ -z $custom_node_name ]] && custom_node_name="Hy2_Node"
-    echo "$custom_node_name" > /etc/sing-box/hy2_name.txt
+    echo "$custom_node_name" > /etc/sing-box/hy2_name.txt.tmp && mv -f /etc/sing-box/hy2_name.txt.tmp /etc/sing-box/hy2_name.txt
     
     echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 是否开启防阻断 Salamander 混淆？(y/n) [默认: y]: ${PLAIN}"
@@ -1269,15 +1269,15 @@ echo ""
     local v_short_id=$(/usr/local/bin/sing-box generate rand --hex 8 2>/dev/null)
     local v_uuid=$(/usr/local/bin/sing-box generate uuid 2>/dev/null)
     [[ -z "$v_uuid" ]] && v_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "11223344-5566-7788-9900-aabbccddeeff")
-    [[ -z "$v_short_id" ]] && v_short_id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' | head -c 16 || echo "1122334455667788")
+    [[ -z "$v_short_id" ]] && v_short_id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' | head -c 16 || printf "%s\n" "1122334455667788")
     
-    echo "$v_public_key" > /etc/sing-box/reality_pub.txt
+    echo "$v_public_key" > /etc/sing-box/reality_pub.txt.tmp && mv -f /etc/sing-box/reality_pub.txt.tmp /etc/sing-box/reality_pub.txt
     
-    echo ""
+    printf "%s\n" ""
     echo -en " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Vless_Reality_Node]: ${PLAIN}"
     read custom_node_name || exit 1
     [[ -z $custom_node_name ]] && custom_node_name="Vless_Reality_Node"
-    echo "$custom_node_name" > /etc/sing-box/vless_name.txt
+    echo "$custom_node_name" > /etc/sing-box/vless_name.txt.tmp && mv -f /etc/sing-box/vless_name.txt.tmp /etc/sing-box/vless_name.txt
     
     local listen_addr="::"
     [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"

@@ -38,7 +38,7 @@ generate_client_configs() {
         while ss -tnl 2>/dev/null | grep -E -q "(:|^)$sub_port( |$)"; do
             sub_port=$(shuf -i 10000-30000 -n 1)
         done
-        echo "$sub_port" > /etc/sing-box/sub_port.txt
+        printf "%s\n" "$sub_port" > /etc/sing-box/sub_port.txt.tmp && mv -f /etc/sing-box/sub_port.txt.tmp /etc/sing-box/sub_port.txt
         open_port "$sub_port" "tcp" "sub"
     fi
 
@@ -120,15 +120,13 @@ generate_client_configs() {
         local node_name=$(cat /etc/sing-box/hy2_name.txt 2>/dev/null || echo "Hy2_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
-        local bind_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json)
+        eval "$(jq -r '.inbounds[] | select(.tag=="hy2-in") | @sh "local bind_port=\(.listen_port) pwd=\(.users[0].password) obfs=\(.obfs.password // \"\")"' /etc/sing-box/config.json 2>/dev/null)"
         local hop_ports=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
         [[ ! "$hop_ports" =~ ^[0-9]+-[0-9]+$ ]] && hop_ports=""
         # 通用 hysteria2:// URI 使用主监听端口，避免部分客户端/订阅转换器无法解析端口范围。
         # Clash/Mihomo 与 sing-box 专用订阅仍分别通过 ports / server_ports 保留端口跳跃。
         local hy2_client_port="$bind_port"
-        local pwd=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .users[0].password' /etc/sing-box/config.json)
         local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
-        local obfs=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .obfs?.password // empty' /etc/sing-box/config.json)
 
         local cert_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
         local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
@@ -265,12 +263,9 @@ generate_client_configs() {
         local node_name=$(cat /etc/sing-box/vless_name.txt 2>/dev/null || echo "Vless_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
-        local bind_port=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .listen_port' /etc/sing-box/config.json)
-        local uuid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .users[0].uuid' /etc/sing-box/config.json)
-        local sni=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config.json 2>/dev/null)
+        eval "$(jq -r '.inbounds[] | select(.tag=="vless-in") | @sh "local bind_port=\(.listen_port) uuid=\(.users[0].uuid) sni=\(.tls.server_name // \"\") sid=\(.tls.reality.short_id[0] // \"\")"' /etc/sing-box/config.json 2>/dev/null)"
         [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/vless_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
-        local sid=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id[0]' /etc/sing-box/config.json)
   local s_reality_pub=""
   local s_vless_sni=""
   local s_reality_sid=""
