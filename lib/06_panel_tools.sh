@@ -1307,6 +1307,9 @@ config_modify_menu() {
             4) enable_hy2_port_hopping ;;
             5) modify_node_name ;;
             6) set_node_expiration ;;
+            7) _modify_specific_port "hy2" ;;
+            8) _modify_specific_port "vless" ;;
+            9) _modify_sub_port ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
@@ -1951,32 +1954,6 @@ show_warp_ipv6_route() {
 
 
 
-# HY2_NO_MAIN_UI_COMPAT_V2_BEGIN
-# 后台兼容函数：不修改主界面 UI，只保证菜单原有入口不会 command not found。
-config_modify_menu() {
-  if declare -F edit_config >/dev/null 2>&1; then
-    edit_config "$@"
-    return $?
-  fi
-
-  red " [✘] 配置编辑函数 edit_config 未找到。"
-  yellow " [提示] 请检查 lib/06_panel_tools.sh 是否完整导入。"
-  return 1
-}
-
-# 如果菜单里存在 WARP 入口但当前代码未实现函数，给出友好提示，避免直接崩溃。
-# 不修改菜单显示，不改变主界面 UI。
-if ! declare -F warp_ipv6_route_menu >/dev/null 2>&1; then
-  warp_ipv6_route_menu() {
-    echo ""
-    red " [✘] 当前代码未包含 WARP IPv6 域名分流实现。"
-    yellow " [提示] 请补充 WARP 模块，或执行在线更新后再使用该功能。"
-    echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
-    read _ || true
-  }
-fi
-# HY2_NO_MAIN_UI_COMPAT_V2_END
 
 
 # --- V1.7.3 节点与订阅独立端口映射核心 (防火墙穿透与状态同步修复版) ---
@@ -2060,5 +2037,90 @@ _modify_sub_port() {
     generate_client_configs >/dev/null 2>&1 || true
 
     echo -e "  \033[1;32m[✔] 在线订阅分发 Web 端口已成功修改为 [ $new_port ]，防火墙及 Nginx 已热重载！\033[0m\n"
+    read -n 1 -s -r -p "  按任意键返回..."
+}
+
+
+# --- V1.7.6 节点与订阅独立端口映射核心 (含防火墙与自愈重组) ---
+_modify_specific_port() {
+    local node_type="$1"
+    local type_name tag_name proto
+    if [ "$node_type" == "hy2" ]; then 
+        type_name="Hysteria2"; tag_name="hy2-in"; proto="udp"
+    else 
+        type_name="VLESS"; tag_name="vless-in"; proto="tcp"
+    fi
+
+    echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
+    local new_port
+    read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
+    
+    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
+        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+
+    if [ -f /etc/sing-box/config.json ]; then
+        local filter
+        if [ "$node_type" == "hy2" ]; then
+            filter='.inbounds |= map(if .type == "hysteria2" then .listen_port = '$new_port' else . end)'
+        else
+            filter='.inbounds |= map(if .type == "vless" then .listen_port = '$new_port' else . end)'
+        fi
+        
+        if jq "$filter" /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
+            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
+        else
+            echo -e "  \033[1;31m[✘] 错误：JSON 改写失败！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+        fi
+    fi
+
+    close_port_by_tag "$tag_name" >/dev/null 2>&1 || true
+    open_port "$new_port" "$proto" "$tag_name" >/dev/null 2>&1 || true
+
+    if [ "$node_type" == "hy2" ]; then
+        echo "$new_port" > /etc/sing-box/hy2_port.txt
+    else
+        echo "$new_port" > /etc/sing-box/vless_port.txt
+    fi
+
+    restart_singbox_checked >/dev/null 2>&1 || true
+    generate_client_configs >/dev/null 2>&1 || true
+
+    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]，防火墙及订阅已同步！\033[0m\n"
+    read -n 1 -s -r -p "  按任意键返回..."
+}
+
+_modify_sub_port() {
+    echo -e "\n  \033[1;36m▶ 正在修改订阅链接在线分发 (Web) 端口...\033[0m"
+    local new_port
+    read -p "  请输入全新订阅分发端口 (1000-65535) [直接回车取消]: " new_port
+    
+    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1000 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
+        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    fi
+
+    echo "$new_port" > /etc/sing-box/sub_port.txt
+
+    close_port_by_tag "sub" >/dev/null 2>&1 || true
+    open_port "$new_port" "tcp" "sub" >/dev/null 2>&1 || true
+    
+    if command -v nginx >/dev/null 2>&1; then
+        for conf in /etc/nginx/conf.d/*.conf /etc/nginx/sites-available/*.conf /etc/nginx/http.d/*.conf; do
+            [ -f "$conf" ] && sed -i -E "s/listen\s+[0-9]+/listen $new_port/g" "$conf" 2>/dev/null || true
+        done
+        if is_svc_active nginx; then svc_restart nginx >/dev/null 2>&1 || true; fi
+    fi
+
+    generate_client_configs >/dev/null 2>&1 || true
+
+    echo -e "  \033[1;32m[✔] 在线订阅 Web 端口已成功修改为 [ $new_port ]，防火墙及订阅已热重载！\033[0m\n"
     read -n 1 -s -r -p "  按任意键返回..."
 }
