@@ -1956,7 +1956,9 @@ show_warp_ipv6_route() {
 
 
 
-# --- V1.7.7 节点与订阅独立端口映射核心 (修复 lsof 假占用检测漏洞) ---
+
+
+# --- V1.7.8 节点与订阅独立端口映射核心 (强行夺取与安全组强提醒版) ---
 _modify_specific_port() {
     local node_type="$1"
     local type_name tag_name proto
@@ -1969,7 +1971,6 @@ _modify_specific_port() {
     echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
     local new_port current_port
     
-    # 获取当前真实运行端口
     current_port=$(jq -r '.inbounds[] | select(.tag=="'$tag_name'") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
     
     read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
@@ -1979,12 +1980,25 @@ _modify_specific_port() {
         echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
     fi
     
-    # 💥 核心修复区：如果是同端口，免检放行；如果是新端口，使用高精度 ss 检测 LISTEN 状态
+    # 💥 暴力夺权逻辑：若被占用，允许用户选择强制击杀！
     if [ "$new_port" != "$current_port" ]; then
         if ss -tuln 2>/dev/null | grep -E -q "(:|^)$new_port( |$)"; then
-            echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被本地其他进程真实占用！\033[0m\n"
-            ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print "    占用进程详情: "$NF}' || true
-            read -n 1 -s -r -p "  按任意键返回..."; return 1
+            echo -e "  \033[1;31m[✘] 警告：端口 $new_port 正在被占用！\033[0m"
+            local occ_info=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print $NF}' | head -n 1)
+            echo -e "  \033[1;33m[!] 占用进程详情: $occ_info\033[0m"
+            
+            echo -en "  \033[1;31m▶ 是否强行击杀该进程并夺取端口？(y/n) [默认: n]: \033[0m"
+            read force_kill
+            if [[ "$force_kill" == "y" || "$force_kill" == "Y" ]]; then
+                local pids=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | grep -oP 'pid=\K[0-9]+' | sort -u)
+                for pid in $pids; do
+                    kill -9 "$pid" 2>/dev/null || true
+                done
+                echo -e "  \033[1;32m[✔] 僵尸清理完毕，端口已成功夺取！\033[0m"
+                sleep 1
+            else
+                echo "  [i] 操作已取消。"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+            fi
         fi
     fi
 
@@ -2012,10 +2026,17 @@ _modify_specific_port() {
         echo "$new_port" > /etc/sing-box/vless_port.txt
     fi
 
+    # 清除残留僵尸进程确保重启万无一失
+    killall -9 sing-box 2>/dev/null || true
     restart_singbox_checked >/dev/null 2>&1 || true
     generate_client_configs >/dev/null 2>&1 || true
 
-    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]，防火墙及订阅已同步！\033[0m\n"
+    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]！\033[0m"
+    echo -e "  \033[1;31m=====================================================\033[0m"
+    echo -e "  \033[1;33m【极其重要】请务必前往云服务器控制台（如阿里云/腾讯云），\033[0m"
+    echo -e "  \033[1;33m 在『安全组/防火墙』中放行新端口 $new_port ($proto) ，\033[0m"
+    echo -e "  \033[1;33m 否则节点必定断网/连接超时！\033[0m"
+    echo -e "  \033[1;31m=====================================================\033[0m\n"
     read -n 1 -s -r -p "  按任意键返回..."
 }
 
@@ -2032,12 +2053,25 @@ _modify_sub_port() {
         echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
     fi
     
-    # 💥 核心修复区：如果是同端口，免检放行；如果是新端口，使用高精度 ss 检测 LISTEN 状态
+    # 💥 暴力夺权逻辑：若被占用，允许用户选择强制击杀！
     if [ "$new_port" != "$current_port" ]; then
         if ss -tuln 2>/dev/null | grep -E -q "(:|^)$new_port( |$)"; then
-            echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被本地其他进程真实占用！\033[0m\n"
-            ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print "    占用进程详情: "$NF}' || true
-            read -n 1 -s -r -p "  按任意键返回..."; return 1
+            echo -e "  \033[1;31m[✘] 警告：端口 $new_port 正在被占用！\033[0m"
+            local occ_info=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print $NF}' | head -n 1)
+            echo -e "  \033[1;33m[!] 占用进程详情: $occ_info\033[0m"
+            
+            echo -en "  \033[1;31m▶ 是否强行击杀该进程并夺取端口？(y/n) [默认: n]: \033[0m"
+            read force_kill
+            if [[ "$force_kill" == "y" || "$force_kill" == "Y" ]]; then
+                local pids=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | grep -oP 'pid=\K[0-9]+' | sort -u)
+                for pid in $pids; do
+                    kill -9 "$pid" 2>/dev/null || true
+                done
+                echo -e "  \033[1;32m[✔] 僵尸清理完毕，端口已成功夺取！\033[0m"
+                sleep 1
+            else
+                echo "  [i] 操作已取消。"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+            fi
         fi
     fi
 
@@ -2050,11 +2084,19 @@ _modify_sub_port() {
         for conf in /etc/nginx/conf.d/*.conf /etc/nginx/sites-available/*.conf /etc/nginx/http.d/*.conf; do
             [ -f "$conf" ] && sed -i -E "s/listen\s+[0-9]+/listen $new_port/g" "$conf" 2>/dev/null || true
         done
-        if is_svc_active nginx; then svc_restart nginx >/dev/null 2>&1 || true; fi
+        if is_svc_active nginx; then 
+            killall -9 nginx 2>/dev/null || true
+            svc_restart nginx >/dev/null 2>&1 || true
+        fi
     fi
 
     generate_client_configs >/dev/null 2>&1 || true
 
-    echo -e "  \033[1;32m[✔] 在线订阅 Web 端口已成功修改为 [ $new_port ]，防火墙及订阅已热重载！\033[0m\n"
+    echo -e "  \033[1;32m[✔] 在线订阅 Web 端口已成功修改为 [ $new_port ]！\033[0m"
+    echo -e "  \033[1;31m=====================================================\033[0m"
+    echo -e "  \033[1;33m【极其重要】请务必前往云服务器控制台（阿里云/腾讯云等），\033[0m"
+    echo -e "  \033[1;33m 在『安全组/防火墙』中放行新端口 $new_port (TCP) ，\033[0m"
+    echo -e "  \033[1;33m 否则你绝对打不开订阅链接！\033[0m"
+    echo -e "  \033[1;31m=====================================================\033[0m\n"
     read -n 1 -s -r -p "  按任意键返回..."
 }
