@@ -1270,6 +1270,9 @@ disable_hy2_port_hopping() {
 }
 
 enable_hy2_port_hopping() {
+    local _hy2_detected_main_port=""
+    _hy2_detected_main_port="$(_hy2_get_main_port 2>/dev/null || true)"
+
     clear
     print_line
     green " 开启 / 修改 Hysteria 2 跳跃端口 "
@@ -1284,7 +1287,7 @@ enable_hy2_port_hopping() {
     fi
 
     local main_port old_range hop_range start_port end_port range_size confirm_large old_main
-    main_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json 2>/dev/null)
+    main_port=$(jq -r '.inbounds[] | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port' /etc/sing-box/config.json 2>/dev/null)
 
     if [[ ! "$main_port" =~ ^[0-6]+$ ]]; then
         red " [错误] 未能读取 Hy2 主端口。"

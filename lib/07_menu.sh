@@ -181,7 +181,7 @@ main_status_show_node_info() {
         return 0
     fi
 
-    hy2_port=$(jq -r '.inbounds[]? | select(.tag=="hy2-in") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
+    hy2_port=$(jq -r '.inbounds[]? | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
     vless_port=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
 
     if [[ -z "$hy2_port" && -z "$vless_port" ]]; then

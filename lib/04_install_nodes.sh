@@ -1163,6 +1163,20 @@ restart_singbox_checked() {
 }
 
 
+
+_hy2_get_main_port() {
+    local p=""
+
+    p="$(jq -er '[.inbounds[]? | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null)" || p=""
+
+    if [[ ! "$p" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+
+    printf "%s\n" "$p"
+}
+
+
 _hy2_hop_validate_range() {
     local range="${1:-}"
     local start_port=""
