@@ -511,11 +511,13 @@ config_outbound() {
             fi
 
             yellow " 正在写入 Sing-box 落地代理配置..."
+            : > "$outbound_jq_err"
 
             if [[ "$out_choice" == "1" ]]; then
                 jq --slurpfile ob "$outbound_block_tmp" '
-                    (.outbounds //= [])
-                    | (.route.rules //= [])
+                    if (.outbounds | type) != "array" then .outbounds = [] else . end
+                    | if (.route | type) != "object" then .route = {} else . end
+                    | if (.route.rules | type) != "array" then .route.rules = [] else . end
                     | del(.outbounds[]? | select(.tag=="proxy"))
                     | del(.route.rules[]? | select((.outbound // "")=="proxy"))
                     | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
@@ -526,11 +528,12 @@ config_outbound() {
                         {"network": "udp", "port": 443, "action": "route", "outbound": "block"},
                         {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box/config.json > "$config_tmp"
+                ' /etc/sing-box/config.json > "$config_tmp" 2>"$outbound_jq_err"
             elif [[ "$out_choice" == "2" ]]; then
                 jq --slurpfile ob "$outbound_block_tmp" '
-                    (.outbounds //= [])
-                    | (.route.rules //= [])
+                    if (.outbounds | type) != "array" then .outbounds = [] else . end
+                    | if (.route | type) != "object" then .route = {} else . end
+                    | if (.route.rules | type) != "array" then .route.rules = [] else . end
                     | del(.outbounds[]? | select(.tag=="proxy"))
                     | del(.route.rules[]? | select((.outbound // "")=="proxy"))
                     | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
@@ -544,11 +547,12 @@ config_outbound() {
                     ] + .route.rules + [
                         {"action": "route", "outbound": "proxy"}
                     ]
-                ' /etc/sing-box/config.json > "$config_tmp"
+                ' /etc/sing-box/config.json > "$config_tmp" 2>"$outbound_jq_err"
             else
                 jq --slurpfile ob "$outbound_block_tmp" --arg inb "$target_inbound" '
-                    (.outbounds //= [])
-                    | (.route.rules //= [])
+                    if (.outbounds | type) != "array" then .outbounds = [] else . end
+                    | if (.route | type) != "object" then .route = {} else . end
+                    | if (.route.rules | type) != "array" then .route.rules = [] else . end
                     | del(.outbounds[]? | select(.tag=="proxy"))
                     | del(.route.rules[]? | select((.outbound // "")=="proxy"))
                     | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
@@ -558,11 +562,12 @@ config_outbound() {
                     | .route.rules = [
                         {"inbound": [$inb], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box/config.json > "$config_tmp"
+                ' /etc/sing-box/config.json > "$config_tmp" 2>"$outbound_jq_err"
             fi
 
             if [[ ! -s "$config_tmp" ]] || ! jq -e empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "落地代理配置生成或 JSON 校验失败"
+                [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
                 _outbound_cleanup
                 _outbound_pause
                 return 1
@@ -604,17 +609,19 @@ config_outbound() {
             yellow " 正在清除中转路由配置..."
 
             jq '
-                (.outbounds //= [])
-                | (.route.rules //= [])
+                if (.outbounds | type) != "array" then .outbounds = [] else . end
+                    | if (.route | type) != "object" then .route = {} else . end
+                    | if (.route.rules | type) != "array" then .route.rules = [] else . end
                 | del(.outbounds[]? | select(.tag=="proxy"))
                 | del(.route.rules[]? | select((.outbound // "")=="proxy"))
                 | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
-            ' /etc/sing-box/config.json > "$config_tmp"
+            ' /etc/sing-box/config.json > "$config_tmp" 2>"$outbound_jq_err"
 
             if [[ ! -s "$config_tmp" ]] || ! jq -e empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "关闭落地代理配置生成或 JSON 校验失败"
+                [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
                 _outbound_cleanup
                 _outbound_pause
                 return 1
