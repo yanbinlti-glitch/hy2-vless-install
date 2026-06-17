@@ -54,9 +54,11 @@ remove_node() {
                 clean_env "keep_core"
                 green "  [✔] Hysteria 2 节点及关联服务已成功卸载！(核心已保留)"
             else
-                disable_hy2_port_hopping "quiet" || true
+                if ! _begin_singbox_config_transaction; then red " [错误] 无法创建卸载事务备份。"; return 1; fi
+            disable_hy2_port_hopping "quiet" || true
                 close_port_by_tag "hy2-in"
-                jq 'del(.inbounds[] | select(.tag=="hy2-in"))' /etc/sing-box/config.json > /tmp/sb_tmp.json && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json || { red " [✘] Hysteria 2 节点配置移除失败。"; return 1; }
+                rm -f /etc/sing-box/hy2_name.txt /etc/sing-box/hy2_hop_ports.txt
+            jq 'def _has_inbound($tag): (.inbound? // empty) as $in | if (($in|type) == "array") then (($in | index($tag)) != null) elif (($in|type) == "string") then ($in == $tag) else false end; del(.inbounds[]? | select(.tag=="hy2-in")) | del(.route.rules[]? | select(_has_inbound("hy2-in")))' /etc/sing-box/config.json > /tmp/sb_tmp.json && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json || { red " [✘] Hysteria 2 节点配置移除失败。"; return 1; }
                 generate_client_configs
                 restart_singbox_checked
                 green "  [✔] Hysteria 2 节点已成功卸载！"
@@ -70,8 +72,10 @@ remove_node() {
                 clean_env "keep_core"
                 green "  [✔] VLESS 节点及关联服务已成功卸载！(核心已保留)"
             else
-                close_port_by_tag "vless-in"
-                jq 'del(.inbounds[] | select(.tag=="vless-in"))' /etc/sing-box/config.json > /tmp/sb_tmp.json && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json || { red " [✘] VLESS 节点配置移除失败。"; return 1; }
+                if ! _begin_singbox_config_transaction; then red " [错误] 无法创建卸载事务备份。"; return 1; fi
+            close_port_by_tag "vless-in"
+                rm -f /etc/sing-box/vless_name.txt /etc/sing-box/vless_sni.txt /etc/sing-box/reality_pub.txt
+            jq 'def _has_inbound($tag): (.inbound? // empty) as $in | if (($in|type) == "array") then (($in | index($tag)) != null) elif (($in|type) == "string") then ($in == $tag) else false end; del(.inbounds[]? | select(.tag=="vless-in")) | del(.route.rules[]? | select(_has_inbound("vless-in")))' /etc/sing-box/config.json > /tmp/sb_tmp.json && mv -f /tmp/sb_tmp.json /etc/sing-box/config.json || { red " [✘] VLESS 节点配置移除失败。"; return 1; }
                 generate_client_configs
                 restart_singbox_checked
                 green "  [✔] VLESS 节点已成功卸载！"
