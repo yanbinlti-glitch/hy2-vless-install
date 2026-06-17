@@ -164,7 +164,7 @@ auto_source_guard() {
 
   red " [错误] 当前系统软件源检测失败或超时。"
 
-  if [[ "${HY2_VLESS_ALLOW_SOURCE_SWITCH:-0}" != "1" ]]
+  if [[ "${HY2_VLESS_ALLOW_SOURCE_SWITCH:-1}" != "1" ]]
   then
     yellow " [安全] 未修改任何系统软件源文件。"
     yellow " [提示] 请先检查网络、DNS 和现有软件源配置。"
