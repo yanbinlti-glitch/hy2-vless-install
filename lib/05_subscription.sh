@@ -311,7 +311,7 @@ generate_client_configs() {
           jq -cn \
             --arg tag "$node_name" \
             --arg server "$yaml_json_ip" \
-            --argjson port "$bind_port" \
+            --arg port "$bind_port" \
             --arg uuid "$uuid" \
             --arg sni "$sni" \
             --arg public_key "$pub" \
@@ -321,7 +321,7 @@ generate_client_configs() {
                 type: "vless",
                 tag: $tag,
                 server: $server,
-                server_port: $port,
+                server_port: ($port | tonumber),
                 uuid: $uuid,
                 flow: "xtls-rprx-vision",
                 packet_encoding: "xudp",
