@@ -63,10 +63,14 @@ inst_cert() {
     
     printf "%s\n" ""
     yellow "  请选择您的安全伪装域名 (SNI):"
-    echo -e "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com (推荐, 默认)"
-    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
-    echo -e "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
-    echo -e "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
+    printf "%b
+" "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com (推荐, 默认)"
+    printf "%b
+" "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-4] (默认1): ${PLAIN}"
     read sni_choice || sni_choice=1
     [[ -z "$sni_choice" ]] && sni_choice=1
@@ -1355,8 +1359,10 @@ inst_singbox() {
     echo ""
     yellow "  Sing-box 核心支持多协议矩阵，您可以先选装一个，后续可再次进入菜单补齐："
     echo ""
-    echo -e "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}"
+    printf "%b
+" "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}"
+    printf "%b
+" "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}"
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2] (默认1): ${PLAIN}"
     read protoInput || protoInput=1

@@ -28,16 +28,21 @@ LIGHT_PURPLE="\033[1;35m"
 LIGHT_CYAN="\033[1;36m"
 PLAIN="\033[0m"
 
-red()    { echo -e "${LIGHT_RED}$1${PLAIN}"; }
-green()  { echo -e "${LIGHT_GREEN}$1${PLAIN}"; }
-yellow() { echo -e "${LIGHT_YELLOW}$1${PLAIN}"; }
-purple() { echo -e "${LIGHT_PURPLE}$1${PLAIN}"; }
+red()    { printf "%b
+" "${LIGHT_RED}$1${PLAIN}"; }
+green()  { printf "%b
+" "${LIGHT_GREEN}$1${PLAIN}"; }
+yellow() { printf "%b
+" "${LIGHT_YELLOW}$1${PLAIN}"; }
+purple() { printf "%b
+" "${LIGHT_PURPLE}$1${PLAIN}"; }
 
 print_line() {
     green " ──────────────────────────────────────────────────────────"
 }
 
-trap 'echo -e "\n\n ${LIGHT_RED}[警告] 检测到强行中断，脚本已安全退出。${PLAIN}"; exit 1' INT TERM
+trap 'printf "%b
+" "\n\n ${LIGHT_RED}[警告] 检测到强行中断，脚本已安全退出。${PLAIN}"; exit 1' INT TERM
 
 # HY2_QUIET_PROGRESS_V2_BEGIN
 # 静默日志 + 中文进度助手。

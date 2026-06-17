@@ -189,7 +189,8 @@ main_status_show_node_info() {
         return 0
     fi
 
-    echo -e " ${LIGHT_CYAN}Sing-box 节点安装信息:${PLAIN}"
+    printf "%b
+" " ${LIGHT_CYAN}Sing-box 节点安装信息:${PLAIN}"
 
     if [[ -n "$vless_port" && "$vless_port" != "null" ]]; then
         vless_sni=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config.json 2>/dev/null)
@@ -197,7 +198,8 @@ main_status_show_node_info() {
         [[ -z "$vless_sni" || "$vless_sni" == "null" ]] && vless_sni="未读取"
         [[ -z "$vless_flow" || "$vless_flow" == "null" ]] && vless_flow="xtls-rprx-vision"
 
-        echo -e " ${LIGHT_GREEN} ✔ [ VLESS-Reality ]${PLAIN} 端口:${LIGHT_YELLOW}${vless_port}${PLAIN}  Reality域名:${LIGHT_YELLOW}${vless_sni}${PLAIN}  flow:${LIGHT_YELLOW}${vless_flow}${PLAIN}"
+        printf "%b
+" " ${LIGHT_GREEN} ✔ [ VLESS-Reality ]${PLAIN} 端口:${LIGHT_YELLOW}${vless_port}${PLAIN}  Reality域名:${LIGHT_YELLOW}${vless_sni}${PLAIN}  flow:${LIGHT_YELLOW}${vless_flow}${PLAIN}"
     fi
 
     if [[ -n "$hy2_port" && "$hy2_port" != "null" ]]; then
@@ -205,7 +207,8 @@ main_status_show_node_info() {
         hy2_hop=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
         [[ -z "$hy2_hop" ]] && hy2_hop="未开启"
 
-        echo -e " ${LIGHT_GREEN} ✔ [ Hysteria-2   ]${PLAIN} 端口:${LIGHT_YELLOW}${hy2_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${hy2_sni}${PLAIN}  跳跃端口:${LIGHT_YELLOW}${hy2_hop}${PLAIN}"
+        printf "%b
+" " ${LIGHT_GREEN} ✔ [ Hysteria-2   ]${PLAIN} 端口:${LIGHT_YELLOW}${hy2_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${hy2_sni}${PLAIN}  跳跃端口:${LIGHT_YELLOW}${hy2_hop}${PLAIN}"
     fi
 }
 
@@ -280,9 +283,11 @@ main_status_landing_info() {
             local country=$(echo "$geo" | jq -r '.country')
             local city=$(echo "$geo" | jq -r '.city')
             local isp=$(echo "$geo" | jq -r '.isp')
-            echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} $country $city ($isp)"
+            printf "%b
+" "${LIGHT_CYAN}[本机直连]${PLAIN} $country $city ($isp)"
         else
-            echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} 获取归属地超时"
+            printf "%b
+" "${LIGHT_CYAN}[本机直连]${PLAIN} 获取归属地超时"
         fi
     else
         eval "$(jq -r '.outbounds[] | select(.tag=="proxy") | @sh "local p_type=\(.type) p_server=\(.server) p_port=\(.server_port) p_user=\(.username // \"\") p_pass=\(.password // \"\") p_tls=\(.tls.enabled // \"\")"' /etc/sing-box/config.json 2>/dev/null)" 
@@ -309,9 +314,11 @@ main_status_landing_info() {
             local ip=$(echo "$geo" | jq -r '.query')
             local country=$(echo "$geo" | jq -r '.country')
             local isp=$(echo "$geo" | jq -r '.isp')
-            echo -e "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} $ip ($country - $isp)"
+            printf "%b
+" "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} $ip ($country - $isp)"
         else
-            echo -e "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} 检测失败 (节点超时或阻断)"
+            printf "%b
+" "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} 检测失败 (节点超时或阻断)"
         fi
     fi
 }
@@ -331,9 +338,11 @@ main_status_landing_ip() {
             local ip=$(echo "$geo" | jq -r '.query')
             local country=$(echo "$geo" | jq -r '.country')
             local isp=$(echo "$geo" | jq -r '.isp')
-            echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} $ip ($country - $isp)"
+            printf "%b
+" "${LIGHT_CYAN}[本机直连]${PLAIN} $ip ($country - $isp)"
         else
-            echo -e "${LIGHT_CYAN}[本机直连]${PLAIN} 获取超时"
+            printf "%b
+" "${LIGHT_CYAN}[本机直连]${PLAIN} 获取超时"
         fi
     else
         eval "$(jq -r '.outbounds[] | select(.tag=="proxy") | @sh "local p_type=\(.type) p_server=\(.server) p_port=\(.server_port) p_user=\(.username // \"\") p_pass=\(.password // \"\") p_tls=\(.tls.enabled // \"\")"' /etc/sing-box/config.json 2>/dev/null)" 
@@ -361,9 +370,11 @@ main_status_landing_ip() {
             local ip=$(echo "$geo" | jq -r '.query')
             local country=$(echo "$geo" | jq -r '.country')
             local isp=$(echo "$geo" | jq -r '.isp')
-            echo -e "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} $ip ($country - $isp)"
+            printf "%b
+" "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} $ip ($country - $isp)"
         else
-            echo -e "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} 检测失败 (节点超时或被阻断)"
+            printf "%b
+" "${LIGHT_PURPLE}[${is_global}中转]${PLAIN} 检测失败 (节点超时或被阻断)"
         fi
     fi
 }
@@ -451,14 +462,21 @@ main_realtime_status_panel() {
         out_mode="智能分流"
     fi
 
-    echo -e " ${LIGHT_CYAN}实时状态面板${PLAIN}"
+    printf "%b
+" " ${LIGHT_CYAN}实时状态面板${PLAIN}"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    echo -e " ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}    ${LIGHT_YELLOW}核心版本:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新官方版:${PLAIN} ${sb_latest}"
-    echo -e " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel} "   
-    echo -e " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}     ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
-    echo -e " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
-    echo -e " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
-    echo -e " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
+    printf "%b
+" " ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}    ${LIGHT_YELLOW}核心版本:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新官方版:${PLAIN} ${sb_latest}"
+    printf "%b
+" " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel} "   
+    printf "%b
+" " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}     ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
+    printf "%b
+" " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
+    printf "%b
+" " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
+    printf "%b
+" " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
 
     # 直连 IP 终极高压补位系统
     local disp_v4="${clean_ipv4}"
@@ -470,11 +488,15 @@ main_realtime_status_panel() {
     # 落地 IP 双轨重装渲染逻辑
     if [[ "$out_mode" == "指定节点" ]]; then
         if [[ "$target_inbound" == "hy2-in" ]]; then
-            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
-            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
+            printf "%b
+" " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
+            printf "%b
+" " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
         elif [[ "$target_inbound" == "vless-in" ]]; then
-            echo -e " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
-            echo -e " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
+            printf "%b
+" " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
+            printf "%b
+" " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
         fi
     else
         local suffix=""
@@ -482,9 +504,11 @@ main_realtime_status_panel() {
         [[ "$out_mode" == "智能分流" ]] && suffix=" (流媒体智能分流)"
         
         if [[ "$out_mode" == "未开启" ]]; then
-            echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_CYAN}${landing_info}${PLAIN}"
+            printf "%b
+" " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_CYAN}${landing_info}${PLAIN}"
         else
-            echo -e " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_PURPLE}${landing_info}${suffix}${PLAIN}"
+            printf "%b
+" " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_PURPLE}${landing_info}${suffix}${PLAIN}"
         fi
     fi
     # --- 租期看门狗倒计时高精渲染引擎 ---
@@ -492,7 +516,8 @@ main_realtime_status_panel() {
     if [[ "$exp_time" -gt 0 ]]; then
         local now_ts=$(date +%s)
         if [[ "$now_ts" -ge "$exp_time" ]]; then
-            echo -e " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_RED}已过期 (后台看门狗已强行断网停用)${PLAIN}"
+            printf "%b
+" " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_RED}已过期 (后台看门狗已强行断网停用)${PLAIN}"
             if is_svc_active sing-box; then
                 rc-service sing-box stop >/dev/null 2>&1 || systemctl stop sing-box >/dev/null 2>&1
             fi
@@ -501,10 +526,12 @@ main_realtime_status_panel() {
             local r_days=$((diff_ts / 86400))
             local r_hours=$(( (diff_ts % 86400) / 3600 ))
             local r_mins=$(( (diff_ts % 3600) / 60 ))
-            echo -e " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}剩余 ${r_days} 天 ${r_hours} 小时 ${r_mins} 分钟 (到期自动断网)${PLAIN}"
+            printf "%b
+" " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}剩余 ${r_days} 天 ${r_hours} 小时 ${r_mins} 分钟 (到期自动断网)${PLAIN}"
         fi
     else
-        echo -e " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}永久有效 (未设置时间限制)${PLAIN}"
+        printf "%b
+" " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}永久有效 (未设置时间限制)${PLAIN}"
     fi
 
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -521,36 +548,57 @@ menu() {
   clear
 
   green "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-  echo -e "${LIGHT_GREEN}  ██████╗  ██╗   ██╗ ██████╗  ██╗       █████╗ ${PLAIN}"
-  echo -e "${LIGHT_GREEN}  ██╔══██╗ ██║   ██║ ██╔═══██╗██║      ██╔══██╗${PLAIN}"
-  echo -e "${LIGHT_GREEN}  ██║  ██║ ██║   ██║ ██║   ██║██║      ███████║${PLAIN}"
-  echo -e "${LIGHT_GREEN}  ██║  ██║ ██║   ██║ ██║   ██║██║      ██╔══██║${PLAIN}"
-  echo -e "${LIGHT_GREEN}  ██████╔╝ ╚██████╔╝ ╚██████╔╝███████╗ ██║  ██║${PLAIN}"
-  echo -e "${LIGHT_GREEN}  ╚═════╝   ╚══════╝  ╚═════╝ ╚══════╝ ╚═╝  ╚═╝  ${LIGHT_YELLOW}[当前状态: ${status_ui}${LIGHT_YELLOW}]${PLAIN}"
+  printf "%b
+" "${LIGHT_GREEN}  ██████╗  ██╗   ██╗ ██████╗  ██╗       █████╗ ${PLAIN}"
+  printf "%b
+" "${LIGHT_GREEN}  ██╔══██╗ ██║   ██║ ██╔═══██╗██║      ██╔══██╗${PLAIN}"
+  printf "%b
+" "${LIGHT_GREEN}  ██║  ██║ ██║   ██║ ██║   ██║██║      ███████║${PLAIN}"
+  printf "%b
+" "${LIGHT_GREEN}  ██║  ██║ ██║   ██║ ██║   ██║██║      ██╔══██║${PLAIN}"
+  printf "%b
+" "${LIGHT_GREEN}  ██████╔╝ ╚██████╔╝ ╚██████╔╝███████╗ ██║  ██║${PLAIN}"
+  printf "%b
+" "${LIGHT_GREEN}  ╚═════╝   ╚══════╝  ╚═════╝ ╚══════╝ ╚═╝  ╚═╝  ${LIGHT_YELLOW}[当前状态: ${status_ui}${LIGHT_YELLOW}]${PLAIN}"
   green "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-   echo -e " ${LIGHT_YELLOW}当前版本 ：v${version_ui}${PLAIN}"
-  echo -e " ${LIGHT_GREEN}项目名称 ：Sing-box (Hy2 / VLESS) 一键部署与管理脚本 (Nginx订阅加强版)${PLAIN}"
-  echo -e " ${LIGHT_PURPLE}项目地址 ：哆啦的Github库 https://github.com/yanbinlti-glitch${PLAIN}"
+   printf "%b
+" " ${LIGHT_YELLOW}当前版本 ：v${version_ui}${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}项目名称 ：Sing-box (Hy2 / VLESS) 一键部署与管理脚本 (Nginx订阅加强版)${PLAIN}"
+  printf "%b
+" " ${LIGHT_PURPLE}项目地址 ：哆啦的Github库 https://github.com/yanbinlti-glitch${PLAIN}"
   green "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
   main_realtime_status_panel
     yellow " 脚本快捷方式：666 (已自动配置，下次可在终端直接输入 666 启动)"
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
-  echo -e " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}安装部署 节点核心 (Hysteria 2 / VLESS)${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_RED}节点安全卸载与清理管控${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}安装部署 节点核心 (Hysteria 2 / VLESS)${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_RED}节点安全卸载与清理管控${PLAIN}"
   echo "----------------------------------------------------------------------------------"
-  echo -e " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}启动 / 停止 / 重启服务${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_PURPLE}查看 / 修改 配置文件${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_CYAN}WARP IPv6 域名分流${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_GREEN}配置 出口落地代理与分流 (IP 检测 & 流媒体解锁)${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}启动 / 停止 / 重启服务${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_PURPLE}查看 / 修改 配置文件${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_CYAN}WARP IPv6 域名分流${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_GREEN}配置 出口落地代理与分流 (IP 检测 & 流媒体解锁)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
-  echo -e " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_CYAN}检查 / 在线更新脚本${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
-  echo -e " ${LIGHT_GREEN}[11]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_CYAN}检查 / 在线更新脚本${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[11]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
-  echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
+  printf "%b
+" " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
   echo ""
   printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-11]: ${PLAIN}"

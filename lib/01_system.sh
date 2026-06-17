@@ -80,7 +80,8 @@ _smart_install() {
     
     # 低配防死机：动态挂载 512MB 虚拟内存
     if [[ -n "$total_ram" ]] && [ "$total_ram" -lt 400 ] && [ "$(free -m 2>/dev/null | awk '/^Swap:/{print $2}')" -eq 0 ]; then
-        echo -e "
+        printf "%b
+" "
  [1;33m▶ [内存防爆盾] 检测到极小内存 ($total_ram MB)，正动态挂载 512MB 虚拟内存防宕机...[0m"
         rm -f "$HY2_VLESS_SWAP_FILE"
         dd if=/dev/zero of="$HY2_VLESS_SWAP_FILE" bs=1M count=512 status=none
@@ -369,7 +370,8 @@ gen_random_str() {
 _apply_v156_kernel_tuning() {
     # 1. 解除 Linux 内核跨洲高延迟 TCP 缓冲区锁喉 (BDP 优化)
     if ! grep -q "net.ipv4.tcp_rmem" /etc/sysctl.conf 2>/dev/null; then
-        echo -e " \033[1;36m▶ 正在进行内核级 TCP 缓冲区深度扩容 (BDP 跨洲网络提速)...\033[0m "
+        printf "%b
+" " \033[1;36m▶ 正在进行内核级 TCP 缓冲区深度扩容 (BDP 跨洲网络提速)...\033[0m "
         cat << 'SYSCTL_EOF' >> /etc/sysctl.conf
 
 # V1.5.6 Sing-box BDP Cross-Continent TCP Tuning
