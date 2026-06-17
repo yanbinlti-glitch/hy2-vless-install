@@ -108,7 +108,23 @@ remove_node() {
         _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
 
         if ! restart_singbox_checked; then
-            red " [错误] 卸载后 Sing-box 重启失败，已自动回滚。"
+            red " [错误] 卸载后 Sing-box 配置应用失败，已自动回滚。"
+            return 1
+        fi
+
+        yellow " 正在强制重启 Sing-box 核心，释放已删除节点端口..."
+        if ! svc_restart sing-box >/dev/null 2>&1; then
+            svc_stop sing-box >/dev/null 2>&1 || true
+            sleep 1
+            svc_start sing-box >/dev/null 2>&1 || {
+                red " [错误] Sing-box 核心强制重启失败。"
+                return 1
+            }
+        fi
+
+        sleep 1
+        if ! is_svc_active sing-box; then
+            red " [错误] Sing-box 核心重启后未处于运行状态。"
             return 1
         fi
 
@@ -123,8 +139,20 @@ remove_node() {
 
         generate_client_configs || yellow " [提示] 节点已卸载，但订阅刷新失败；请稍后进入菜单 [6] 查看订阅时自动刷新。"
 
-        green " [✔] ${title} 节点已成功卸载！"
+        green " [✔] ${title} 节点已成功卸载，Sing-box 核心已重启！"
         return 0
+    }
+
+    _restart_panel_after_node_change() {
+        local entry="${SCRIPT_PATH:-/opt/hy2-vless-install/install.sh}"
+        [[ -f "$entry" ]] || entry="/opt/hy2-vless-install/install.sh"
+
+        yellow " 正在刷新管理脚本状态..."
+        sleep 1
+
+        if [[ -f "$entry" ]]; then
+            exec bash "$entry"
+        fi
     }
 
     case "$rm_choice" in
@@ -137,7 +165,7 @@ remove_node() {
             else
                 _remove_single_node_safe "hy2-in" "Hysteria 2" || return 1
             fi
-            sleep 2
+            _restart_panel_after_node_change
             ;;
         2)
             [[ ${has_vless:-0} -eq 0 ]] && return
@@ -148,12 +176,12 @@ remove_node() {
             else
                 _remove_single_node_safe "vless-in" "VLESS" || return 1
             fi
-            sleep 2
+            _restart_panel_after_node_change
             ;;
         3)
             clean_env "keep_core"
             green " [✔] 所有节点配置、订阅及防火墙规则已被彻底清理！(核心已保留)"
-            sleep 2
+            _restart_panel_after_node_change
             ;;
         0)
             return
