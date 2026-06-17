@@ -1956,7 +1956,7 @@ show_warp_ipv6_route() {
 
 
 
-# --- V1.7.3 节点与订阅独立端口映射核心 (防火墙穿透与状态同步修复版) ---
+# --- V1.7.7 节点与订阅独立端口映射核心 (修复 lsof 假占用检测漏洞) ---
 _modify_specific_port() {
     local node_type="$1"
     local type_name tag_name proto
@@ -1967,100 +1967,25 @@ _modify_specific_port() {
     fi
 
     echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
-    local new_port
+    local new_port current_port
+    
+    # 获取当前真实运行端口
+    current_port=$(jq -r '.inbounds[] | select(.tag=="'$tag_name'") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
+    
     read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
     
     if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
     if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
         echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
     fi
-    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
-        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-
-    if [ -f /etc/sing-box/config.json ]; then
-        local filter
-        if [ "$node_type" == "hy2" ]; then
-            filter='.inbounds |= map(if .type == "hysteria2" then .listen_port = '$new_port' else . end)'
-        else
-            filter='.inbounds |= map(if .type == "vless" then .listen_port = '$new_port' else . end)'
+    
+    # 💥 核心修复区：如果是同端口，免检放行；如果是新端口，使用高精度 ss 检测 LISTEN 状态
+    if [ "$new_port" != "$current_port" ]; then
+        if ss -tuln 2>/dev/null | grep -E -q "(:|^)$new_port( |$)"; then
+            echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被本地其他进程真实占用！\033[0m\n"
+            ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print "    占用进程详情: "$NF}' || true
+            read -n 1 -s -r -p "  按任意键返回..."; return 1
         fi
-        
-        if jq "$filter" /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
-            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
-        else
-            echo -e "  \033[1;31m[✘] 错误：JSON 改写失败！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-        fi
-    fi
-
-    # 💥 修复2：防火墙状态机流转 (释放旧端口，打通新端口，防止被墙拦截)
-    close_port_by_tag "$tag_name" >/dev/null 2>&1 || true
-    open_port "$new_port" "$proto" "$tag_name" >/dev/null 2>&1 || true
-
-    # 💥 修复1：跨端OS兼容，抛弃 systemctl 强绑定，使用底层服务管家
-    restart_singbox_checked >/dev/null 2>&1 || true
-    generate_client_configs >/dev/null 2>&1 || true
-
-    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]，防火墙已打通！\033[0m\n"
-    read -n 1 -s -r -p "  按任意键返回..."
-}
-
-_modify_sub_port() {
-    echo -e "\n  \033[1;36m▶ 正在修改订阅链接在线分发 (Web) 端口...\033[0m"
-    local new_port
-    read -p "  请输入全新订阅分发端口 (1000-65535) [直接回车取消]: " new_port
-    
-    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
-        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-
-    # 💥 修复3：持久化写入真实的系统配置文件 (解决虚假变量 /etc/hy2-vless/ 导致的不持久化漏洞)
-    echo "$new_port" > /etc/sing-box/sub_port.txt
-
-    # 💥 防火墙跃迁
-    close_port_by_tag "sub" >/dev/null 2>&1 || true
-    open_port "$new_port" "tcp" "sub" >/dev/null 2>&1 || true
-    
-    # 安全穿透替换 Nginx 的监听配置 (兼容 Alpine 的 http.d 目录)
-    if command -v nginx >/dev/null 2>&1; then
-        for conf in /etc/nginx/conf.d/*.conf /etc/nginx/sites-available/*.conf /etc/nginx/http.d/*.conf; do
-            [ -f "$conf" ] && sed -i -E "s/listen\s+[0-9]+/listen $new_port/g" "$conf" 2>/dev/null || true
-        done
-        if is_svc_active nginx; then svc_restart nginx >/dev/null 2>&1 || true; fi
-    fi
-
-    # 💥 修复4：强制触发全局订阅重组，将新 Web 端口压入所有订阅链接
-    generate_client_configs >/dev/null 2>&1 || true
-
-    echo -e "  \033[1;32m[✔] 在线订阅分发 Web 端口已成功修改为 [ $new_port ]，防火墙及 Nginx 已热重载！\033[0m\n"
-    read -n 1 -s -r -p "  按任意键返回..."
-}
-
-
-# --- V1.7.6 节点与订阅独立端口映射核心 (含防火墙与自愈重组) ---
-_modify_specific_port() {
-    local node_type="$1"
-    local type_name tag_name proto
-    if [ "$node_type" == "hy2" ]; then 
-        type_name="Hysteria2"; tag_name="hy2-in"; proto="udp"
-    else 
-        type_name="VLESS"; tag_name="vless-in"; proto="tcp"
-    fi
-
-    echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
-    local new_port
-    read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
-    
-    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
-        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
     fi
 
     if [ -f /etc/sing-box/config.json ]; then
@@ -2096,15 +2021,24 @@ _modify_specific_port() {
 
 _modify_sub_port() {
     echo -e "\n  \033[1;36m▶ 正在修改订阅链接在线分发 (Web) 端口...\033[0m"
-    local new_port
+    local new_port current_port
+    
+    current_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null | tr -d '[:space:]')
+    
     read -p "  请输入全新订阅分发端口 (1000-65535) [直接回车取消]: " new_port
     
     if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
     if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1000 ] || [ "$new_port" -gt 65535 ]; then
         echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
     fi
-    if command -v lsof >/dev/null 2>&1 && lsof -i:"$new_port" >/dev/null 2>&1; then
-        echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被占用！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
+    
+    # 💥 核心修复区：如果是同端口，免检放行；如果是新端口，使用高精度 ss 检测 LISTEN 状态
+    if [ "$new_port" != "$current_port" ]; then
+        if ss -tuln 2>/dev/null | grep -E -q "(:|^)$new_port( |$)"; then
+            echo -e "  \033[1;31m[✘] 错误：端口 $new_port 已被本地其他进程真实占用！\033[0m\n"
+            ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print "    占用进程详情: "$NF}' || true
+            read -n 1 -s -r -p "  按任意键返回..."; return 1
+        fi
     fi
 
     echo "$new_port" > /etc/sing-box/sub_port.txt
