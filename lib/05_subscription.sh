@@ -374,7 +374,7 @@ generate_client_configs() {
 
 
     # 修复 Bug 3：正确输出文本流
-  rm -f "$web_dir/$sub_uuid/url.txt"
+  printf "%s" "$url_all" > "$web_dir/$sub_uuid/url.txt"
     printf "%s" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%s" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
 
     local sub_url="http://$(get_sub_ip):${sub_port}/${sub_uuid}"
