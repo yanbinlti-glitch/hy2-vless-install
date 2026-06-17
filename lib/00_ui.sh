@@ -146,42 +146,116 @@ hy2_cmd_label() {
   esac
 }
 
+hy2_progress_bar() {
+    local percent="${1:-0}"
+    local width="${2:-28}"
+    local filled=0
+    local empty=0
+    local i=0
+
+    [[ "$percent" =~ ^[0-9]+$ ]] || percent=0
+    (( percent < 0 )) && percent=0
+    (( percent > 100 )) && percent=100
+
+    filled=$(( percent * width / 100 ))
+    empty=$(( width - filled ))
+
+    printf "["
+    for ((i=0; i<filled; i++)); do printf "#"; done
+    for ((i=0; i<empty; i++)); do printf "-"; done
+    printf "]"
+}
+
 hy2_progress_run_shell_with_log() {
-  local label="$1"
-  local logfile="$2"
-  local seconds="$3"
-  shift 3
+    local label="$1"
+    local logfile="$2"
+    local seconds="$3"
+    shift 3
 
-  local cmd="$*"
-  local rc=0
+    local cmd="$*"
+    local rc=0
+    local pid=""
+    local start_ts=0
+    local now_ts=0
+    local elapsed=0
+    local percent=1
+    local last_percent=1
 
-  : > "$logfile" || return 1
-  chmod 600 "$logfile" 2>/dev/null || true
+    : > "$logfile" || return 1
+    chmod 600 "$logfile" 2>/dev/null || true
 
-  hy2_status_start "$label"
+    _hy2_color_defaults
 
-  if [[ -n "$seconds" && "$seconds" =~ ^[0-9]+$ ]] && command -v timeout >/dev/null 2>&1; then
-    timeout "$seconds" bash -c "$cmd" >>"$logfile" 2>&1 || rc=$?
-  else
-    bash -c "$cmd" >>"$logfile" 2>&1 || rc=$?
-  fi
+    if [[ -n "$seconds" && "$seconds" =~ ^[0-9]+$ ]] && command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" bash -c "$cmd" >>"$logfile" 2>&1 &
+    else
+        bash -c "$cmd" >>"$logfile" 2>&1 &
+    fi
 
-  if [[ "$rc" -eq 0 ]]; then
-    hy2_status_ok
-    return 0
-  fi
+    pid=$!
+    start_ts=$(date +%s 2>/dev/null || echo 0)
 
-  hy2_status_fail
-  printf " ${LIGHT_YELLOW}日志已保存：%s${PLAIN}\n" "$logfile"
+    trap 'kill "$pid" 2>/dev/null || true; printf "\n"; trap - INT TERM; return 130' INT TERM
 
-  if [[ "${HY2_SHOW_LOG:-0}" == "1" ]]; then
-    tail -n 120 "$logfile" 2>/dev/null || true
-  else
-    printf " ${LIGHT_YELLOW}查看详细日志：tail -n 120 %s${PLAIN}\n" "$logfile"
-    printf " ${LIGHT_YELLOW}实时调试模式：HY2_SHOW_LOG=1 bash install.sh${PLAIN}\n"
-  fi
+    while kill -0 "$pid" 2>/dev/null; do
+        now_ts=$(date +%s 2>/dev/null || echo "$start_ts")
+        elapsed=$(( now_ts - start_ts ))
+        (( elapsed < 0 )) && elapsed=0
 
-  return "$rc"
+        if [[ -n "$seconds" && "$seconds" =~ ^[0-9]+$ && "$seconds" -gt 0 ]]; then
+            percent=$(( elapsed * 90 / seconds ))
+        else
+            percent=$(( last_percent + 1 ))
+        fi
+
+        (( percent < 1 )) && percent=1
+        (( percent > 90 )) && percent=90
+        (( percent < last_percent )) && percent="$last_percent"
+        last_percent="$percent"
+
+        printf "\r %b %s %s %3d%% 已用%ss" \
+            "${LIGHT_CYAN}▶${PLAIN}" \
+            "$label" \
+            "$(hy2_progress_bar "$percent" 28)" \
+            "$percent" \
+            "$elapsed"
+
+        sleep 0.4
+    done
+
+    wait "$pid"
+    rc=$?
+    trap - INT TERM
+
+    now_ts=$(date +%s 2>/dev/null || echo "$start_ts")
+    elapsed=$(( now_ts - start_ts ))
+    (( elapsed < 0 )) && elapsed=0
+
+    if [[ "$rc" -eq 0 ]]; then
+        printf "\r %b %s %s 100%% 已用%ss\n" \
+            "${LIGHT_GREEN}✔${PLAIN}" \
+            "$label" \
+            "$(hy2_progress_bar 100 28)" \
+            "$elapsed"
+        return 0
+    fi
+
+    printf "\r %b %s %s 失败 已用%ss\n" \
+        "${LIGHT_RED}✘${PLAIN}" \
+        "$label" \
+        "$(hy2_progress_bar "$last_percent" 28)" \
+        "$elapsed"
+
+    printf " ${LIGHT_YELLOW}日志已保存：%s${PLAIN}\n" "$logfile"
+
+    if [[ "${HY2_SHOW_LOG:-0}" == "1" ]]; then
+        tail -n 120 "$logfile" 2>/dev/null || true
+    else
+        printf " ${LIGHT_YELLOW}查看详细日志：tail -n 120 %s${PLAIN}\n" "$logfile"
+        printf " ${LIGHT_YELLOW}实时调试模式：HY2_SHOW_LOG=1 bash install.sh${PLAIN}\n"
+    fi
+
+    return "$rc"
 }
 
 run_quiet_shell() {
