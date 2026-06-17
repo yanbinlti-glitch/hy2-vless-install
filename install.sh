@@ -423,6 +423,8 @@ ensure_modules() {
 
   export HY2_VLESS_BOOTSTRAP_DIR="$boot_dir"
 
+  # shellcheck disable=SC2093  # 此处故意用 exec 切换到已校验的引导副本。
+
   exec bash \
     "$boot_dir/install.sh" \
     "${ORIGINAL_ARGS[@]}"
