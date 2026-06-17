@@ -39,7 +39,7 @@ remove_node() {
     echo ""
     echo -e "  ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read rm_choice || return
 
     case $rm_choice in
@@ -228,7 +228,7 @@ config_outbound() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read out_choice || exit 1
 
     case $out_choice in
@@ -258,7 +258,7 @@ config_outbound() {
             
             echo -en " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
             read proxy_port || exit 1
-            if [[ ! "$proxy_port" =~ ^[0-9]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
+            if [[ ! "$proxy_port" =~ ^[0-6]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
                 red "  [错误] 端口格式无效！"
                 sleep 2; return
             fi
@@ -543,7 +543,6 @@ showconf() {
     yellow "  ▶ 自助排障与安全特性提醒 (必读)："
     echo -e "    ${LIGHT_GREEN}如果订阅链接无法打开，请先确认 VPS 安全组已放行 TCP 订阅端口 ${sub_port}。${PLAIN}"
     echo -e "    ${LIGHT_GREEN}如果 Hy2 节点无法连接，请确认 VPS 安全组已放行对应 UDP 主端口。${PLAIN}"
-    echo -e "    ${LIGHT_GREEN}Hy2 与 VLESS 已在安装时写入推荐协议参数；若要提升 UDP/TCP 链路表现，可在菜单 [7] 开启 BBR/缓冲区优化。${PLAIN}"
     echo -e "    ${LIGHT_PURPLE}====================================================${PLAIN}"
     echo ""
     echo -en " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单... ${PLAIN}"
@@ -575,7 +574,7 @@ enable_bbr() {
     [[ -z "$total_mem_kb" ]] && total_mem_kb=1048576
     local page_size=$(getconf PAGESIZE 2>/dev/null || echo 4096)
 
-            if ! [[ "$page_size" =~ ^[0-9]+$ ]] || [[ "$page_size" -le 0 ]]; then
+            if ! [[ "$page_size" =~ ^[0-6]+$ ]] || [[ "$page_size" -le 0 ]]; then
         page_size=4096
     fi
     local mem_pages=$(( total_mem_kb / (page_size / 1024) ))
@@ -646,7 +645,7 @@ singbox_switch() {
     echo ""
     echo -e "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
-    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
+    echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
     read switchInput || exit 1
     case $switchInput in
         1 ) restart_singbox_checked && green "  Sing-box 核心已启动/重载！"; sleep 2 ;;
@@ -977,8 +976,8 @@ hop_range="$(cat "$range_file" 2>/dev/null | tr -d '[:space:]')"
 main_port="$(cat "$main_file" 2>/dev/null | tr -d '[:space:]')"
 colon_range="${hop_range/-/:}"
 
-[[ "$hop_range" =~ ^[0-9]+-[0-9]+$ ]] || exit 0
-[[ "$main_port" =~ ^[0-9]+$ ]] || exit 0
+[[ "$hop_range" =~ ^[0-6]+-[0-6]+$ ]] || exit 0
+[[ "$main_port" =~ ^[0-6]+$ ]] || exit 0
 
 for tool in iptables ip6tables; do
     command -v "$tool" >/dev/null 2>&1 || continue
@@ -1072,7 +1071,7 @@ enable_hy2_port_hopping() {
     local main_port old_range hop_range start_port end_port range_size confirm_large old_main
     main_port=$(jq -r '.inbounds[] | select(.tag=="hy2-in") | .listen_port' /etc/sing-box/config.json 2>/dev/null)
 
-    if [[ ! "$main_port" =~ ^[0-9]+$ ]]; then
+    if [[ ! "$main_port" =~ ^[0-6]+$ ]]; then
         red " [错误] 未能读取 Hy2 主端口。"
         sleep 2
         return
@@ -1100,7 +1099,7 @@ enable_hy2_port_hopping() {
         return
     fi
 
-    if [[ ! "$hop_range" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+    if [[ ! "$hop_range" =~ ^([0-6]+)-([0-6]+)$ ]]; then
         red " [错误] 端口段格式错误，应为 20000-30000。"
         sleep 2
         return
@@ -1243,7 +1242,7 @@ set_node_expiration() {
         1)
             echo -en "\n ${LIGHT_YELLOW} ▶ 请输入有效的限时天数 (正整数，如 30): ${PLAIN}"
             read exp_days
-            if [[ ! "$exp_days" =~ ^[0-9]+$ ]] || [ "$exp_days" -lt 1 ]; then
+            if [[ ! "$exp_days" =~ ^[0-6]+$ ]] || [ "$exp_days" -lt 1 ]; then
                 red " [错误] 输入格式无效！必须是大于0的正整数。"
                 sleep 2; return
             fi
@@ -1292,12 +1291,9 @@ config_modify_menu() {
         echo -e " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}"
                 echo -e " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_PURPLE}配置节点定时停用限时 (到期自动断网)${PLAIN}"
 
-        echo -e " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_CYAN}修改 Hy2 节点通信端口${PLAIN}"
-        echo -e " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_CYAN}修改 VLESS 节点通信端口${PLAIN}"
-        echo -e " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_CYAN}修改订阅链接分发 (Web) 端口${PLAIN}"        echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
@@ -1307,9 +1303,6 @@ config_modify_menu() {
             4) enable_hy2_port_hopping ;;
             5) modify_node_name ;;
             6) set_node_expiration ;;
-            7) _modify_specific_port "hy2" ;;
-            8) _modify_specific_port "vless" ;;
-            9) _modify_sub_port ;;
             0) return ;;
             *) red " 输入无效"; sleep 1 ;;
         esac
@@ -1702,7 +1695,7 @@ warp_ipv6_route_menu() {
         echo ""
         echo -e " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
-        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-9]: ${PLAIN}"
+        echo -en " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
         read warp_ipv6_choice || return
 
         case "$warp_ipv6_choice" in
@@ -1958,145 +1951,3 @@ show_warp_ipv6_route() {
 
 
 
-# --- V1.7.8 节点与订阅独立端口映射核心 (强行夺取与安全组强提醒版) ---
-_modify_specific_port() {
-    local node_type="$1"
-    local type_name tag_name proto
-    if [ "$node_type" == "hy2" ]; then 
-        type_name="Hysteria2"; tag_name="hy2-in"; proto="udp"
-    else 
-        type_name="VLESS"; tag_name="vless-in"; proto="tcp"
-    fi
-
-    echo -e "\n  \033[1;36m▶ 正在修改 $type_name 节点底层通信端口...\033[0m"
-    local new_port current_port
-    
-    current_port=$(jq -r '.inbounds[] | select(.tag=="'$tag_name'") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
-    
-    read -p "  请输入全新 $type_name 端口 (10000-65535) [直接回车取消]: " new_port
-    
-    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 10000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 10000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-    
-    # 💥 暴力夺权逻辑：若被占用，允许用户选择强制击杀！
-    if [ "$new_port" != "$current_port" ]; then
-        if ss -tuln 2>/dev/null | grep -E -q "(:|^)$new_port( |$)"; then
-            echo -e "  \033[1;31m[✘] 警告：端口 $new_port 正在被占用！\033[0m"
-            local occ_info=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print $NF}' | head -n 1)
-            echo -e "  \033[1;33m[!] 占用进程详情: $occ_info\033[0m"
-            
-            echo -en "  \033[1;31m▶ 是否强行击杀该进程并夺取端口？(y/n) [默认: n]: \033[0m"
-            read force_kill
-            if [[ "$force_kill" == "y" || "$force_kill" == "Y" ]]; then
-                local pids=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | grep -oP 'pid=\K[0-9]+' | sort -u)
-                for pid in $pids; do
-                    kill -9 "$pid" 2>/dev/null || true
-                done
-                echo -e "  \033[1;32m[✔] 僵尸清理完毕，端口已成功夺取！\033[0m"
-                sleep 1
-            else
-                echo "  [i] 操作已取消。"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-            fi
-        fi
-    fi
-
-    if [ -f /etc/sing-box/config.json ]; then
-        local filter
-        if [ "$node_type" == "hy2" ]; then
-            filter='.inbounds |= map(if .type == "hysteria2" then .listen_port = '$new_port' else . end)'
-        else
-            filter='.inbounds |= map(if .type == "vless" then .listen_port = '$new_port' else . end)'
-        fi
-        
-        if jq "$filter" /etc/sing-box/config.json > /tmp/sb_tmp.json 2>/dev/null; then
-            mv -f /tmp/sb_tmp.json /etc/sing-box/config.json
-        else
-            echo -e "  \033[1;31m[✘] 错误：JSON 改写失败！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-        fi
-    fi
-
-    close_port_by_tag "$tag_name" >/dev/null 2>&1 || true
-    open_port "$new_port" "$proto" "$tag_name" >/dev/null 2>&1 || true
-
-    if [ "$node_type" == "hy2" ]; then
-        echo "$new_port" > /etc/sing-box/hy2_port.txt
-    else
-        echo "$new_port" > /etc/sing-box/vless_port.txt
-    fi
-
-    # 清除残留僵尸进程确保重启万无一失
-    killall -9 sing-box 2>/dev/null || true
-    restart_singbox_checked >/dev/null 2>&1 || true
-    generate_client_configs >/dev/null 2>&1 || true
-
-    echo -e "  \033[1;32m[✔] $type_name 底层通信端口已成功跃迁至 [ $new_port ]！\033[0m"
-    echo -e "  \033[1;31m=====================================================\033[0m"
-    echo -e "  \033[1;33m【极其重要】请务必前往云服务器控制台（如阿里云/腾讯云），\033[0m"
-    echo -e "  \033[1;33m 在『安全组/防火墙』中放行新端口 $new_port ($proto) ，\033[0m"
-    echo -e "  \033[1;33m 否则节点必定断网/连接超时！\033[0m"
-    echo -e "  \033[1;31m=====================================================\033[0m\n"
-    read -n 1 -s -r -p "  按任意键返回..."
-}
-
-_modify_sub_port() {
-    echo -e "\n  \033[1;36m▶ 正在修改订阅链接在线分发 (Web) 端口...\033[0m"
-    local new_port current_port
-    
-    current_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null | tr -d '[:space:]')
-    
-    read -p "  请输入全新订阅分发端口 (1000-65535) [直接回车取消]: " new_port
-    
-    if [ -z "$new_port" ] || [ "$new_port" = "" ]; then return 0; fi
-    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1000 ] || [ "$new_port" -gt 65535 ]; then
-        echo -e "  \033[1;31m[✘] 错误：端口号必须为 1000-65535 的数字！\033[0m\n"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-    fi
-    
-    # 💥 暴力夺权逻辑：若被占用，允许用户选择强制击杀！
-    if [ "$new_port" != "$current_port" ]; then
-        if ss -tuln 2>/dev/null | grep -E -q "(:|^)$new_port( |$)"; then
-            echo -e "  \033[1;31m[✘] 警告：端口 $new_port 正在被占用！\033[0m"
-            local occ_info=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | awk '{print $NF}' | head -n 1)
-            echo -e "  \033[1;33m[!] 占用进程详情: $occ_info\033[0m"
-            
-            echo -en "  \033[1;31m▶ 是否强行击杀该进程并夺取端口？(y/n) [默认: n]: \033[0m"
-            read force_kill
-            if [[ "$force_kill" == "y" || "$force_kill" == "Y" ]]; then
-                local pids=$(ss -tulnp 2>/dev/null | grep -E "(:|^)$new_port( |$)" | grep -oP 'pid=\K[0-9]+' | sort -u)
-                for pid in $pids; do
-                    kill -9 "$pid" 2>/dev/null || true
-                done
-                echo -e "  \033[1;32m[✔] 僵尸清理完毕，端口已成功夺取！\033[0m"
-                sleep 1
-            else
-                echo "  [i] 操作已取消。"; read -n 1 -s -r -p "  按任意键返回..."; return 1
-            fi
-        fi
-    fi
-
-    echo "$new_port" > /etc/sing-box/sub_port.txt
-
-    close_port_by_tag "sub" >/dev/null 2>&1 || true
-    open_port "$new_port" "tcp" "sub" >/dev/null 2>&1 || true
-    
-    if command -v nginx >/dev/null 2>&1; then
-        for conf in /etc/nginx/conf.d/*.conf /etc/nginx/sites-available/*.conf /etc/nginx/http.d/*.conf; do
-            [ -f "$conf" ] && sed -i -E "s/listen\s+[0-9]+/listen $new_port/g" "$conf" 2>/dev/null || true
-        done
-        if is_svc_active nginx; then 
-            killall -9 nginx 2>/dev/null || true
-            svc_restart nginx >/dev/null 2>&1 || true
-        fi
-    fi
-
-    generate_client_configs >/dev/null 2>&1 || true
-
-    echo -e "  \033[1;32m[✔] 在线订阅 Web 端口已成功修改为 [ $new_port ]！\033[0m"
-    echo -e "  \033[1;31m=====================================================\033[0m"
-    echo -e "  \033[1;33m【极其重要】请务必前往云服务器控制台（阿里云/腾讯云等），\033[0m"
-    echo -e "  \033[1;33m 在『安全组/防火墙』中放行新端口 $new_port (TCP) ，\033[0m"
-    echo -e "  \033[1;33m 否则你绝对打不开订阅链接！\033[0m"
-    echo -e "  \033[1;31m=====================================================\033[0m\n"
-    read -n 1 -s -r -p "  按任意键返回..."
-}
