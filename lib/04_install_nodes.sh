@@ -1162,8 +1162,150 @@ restart_singbox_checked() {
   return 0
 }
 
+
+_hy2_hop_validate_range() {
+    local range="${1:-}"
+    local start_port=""
+    local end_port=""
+
+    [[ "$range" =~ ^([0-9]+)-([0-9]+)$ ]] || return 1
+
+    start_port="${BASH_REMATCH[1]}"
+    end_port="${BASH_REMATCH[2]}"
+
+    [[ "$start_port" =~ ^[0-9]+$ && "$end_port" =~ ^[0-9]+$ ]] || return 1
+
+    start_port=$((10#$start_port))
+    end_port=$((10#$end_port))
+
+    (( start_port >= 1 && start_port <= 65535 )) || return 1
+    (( end_port >= 1 && end_port <= 65535 )) || return 1
+    (( start_port < end_port )) || return 1
+    (( end_port - start_port <= 20000 )) || return 1
+
+    return 0
+}
+
+_hy2_hop_add_rules_for_tool() {
+    local tool="$1"
+    local main_port="$2"
+    local range="$3"
+    local range_colon="${range/-/:}"
+    local nat_comment="hy2-vless:hy2-hop:nat:${range}->${main_port}"
+    local input_comment="hy2-vless:hy2-hop:input:${range}"
+
+    command -v "$tool" >/dev/null 2>&1 || return 0
+
+    if ! "$tool" -C INPUT -p udp --dport "$range_colon" -m comment --comment "$input_comment" -j ACCEPT >/dev/null 2>&1; then
+        "$tool" -I INPUT -p udp --dport "$range_colon" -m comment --comment "$input_comment" -j ACCEPT || return 1
+    fi
+
+    if ! "$tool" -t nat -C PREROUTING -p udp --dport "$range_colon" -m comment --comment "$nat_comment" -j REDIRECT --to-ports "$main_port" >/dev/null 2>&1; then
+        "$tool" -t nat -A PREROUTING -p udp --dport "$range_colon" -m comment --comment "$nat_comment" -j REDIRECT --to-ports "$main_port" || return 1
+    fi
+
+    return 0
+}
+
+_hy2_hop_del_rules_for_tool() {
+    local tool="$1"
+    local main_port="$2"
+    local range="$3"
+    local range_colon="${range/-/:}"
+    local nat_comment="hy2-vless:hy2-hop:nat:${range}->${main_port}"
+    local input_comment="hy2-vless:hy2-hop:input:${range}"
+
+    command -v "$tool" >/dev/null 2>&1 || return 0
+
+    while "$tool" -t nat -C PREROUTING -p udp --dport "$range_colon" -m comment --comment "$nat_comment" -j REDIRECT --to-ports "$main_port" >/dev/null 2>&1; do
+        "$tool" -t nat -D PREROUTING -p udp --dport "$range_colon" -m comment --comment "$nat_comment" -j REDIRECT --to-ports "$main_port" >/dev/null 2>&1 || break
+    done
+
+    while "$tool" -C INPUT -p udp --dport "$range_colon" -m comment --comment "$input_comment" -j ACCEPT >/dev/null 2>&1; do
+        "$tool" -D INPUT -p udp --dport "$range_colon" -m comment --comment "$input_comment" -j ACCEPT >/dev/null 2>&1 || break
+    done
+
+    return 0
+}
+
+disable_hy2_port_hopping() {
+    local quiet="${1:-}"
+    local range=""
+    local main_port=""
+
+    range="$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]' || true)"
+    main_port="$(cat /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null | tr -d '[:space:]' || true)"
+
+    if [[ -z "$range" || -z "$main_port" ]]; then
+        rm -f /etc/sing-box/hy2_hop_ports.txt /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null || true
+        return 0
+    fi
+
+    if ! _hy2_hop_validate_range "$range" || [[ ! "$main_port" =~ ^[0-9]+$ ]]; then
+        rm -f /etc/sing-box/hy2_hop_ports.txt /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null || true
+        return 0
+    fi
+
+    [[ "$quiet" == "quiet" ]] || yellow " 正在关闭 Hysteria2 端口跳跃规则：$range -> $main_port"
+
+    _hy2_hop_del_rules_for_tool iptables "$main_port" "$range" || true
+    _hy2_hop_del_rules_for_tool ip6tables "$main_port" "$range" || true
+
+    rm -f /etc/sing-box/hy2_hop_ports.txt /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null || true
+    save_iptables >/dev/null 2>&1 || true
+
+    [[ "$quiet" == "quiet" ]] || green " [✔] Hysteria2 端口跳跃规则已关闭。"
+    return 0
+}
+
+enable_hy2_port_hopping() {
+    local main_port="${1:-}"
+    local range="${2:-}"
+
+    if [[ ! "$main_port" =~ ^[0-9]+$ ]] || (( main_port < 1 || main_port > 65535 )); then
+        red " [错误] Hy2 主端口无效，无法启用端口跳跃。"
+        return 1
+    fi
+
+    if ! _hy2_hop_validate_range "$range"; then
+        red " [错误] 跳跃端口范围无效，格式示例：20000-21000，且范围不能超过 20000 个端口。"
+        return 1
+    fi
+
+    if ! command -v iptables >/dev/null 2>&1; then
+        red " [错误] 未找到 iptables，无法创建 UDP 端口跳跃 NAT 规则。"
+        return 1
+    fi
+
+    disable_hy2_port_hopping "quiet" || true
+
+    yellow " 正在启用 Hysteria2 端口跳跃：UDP $range -> $main_port"
+
+    if ! _hy2_hop_add_rules_for_tool iptables "$main_port" "$range"; then
+        red " [错误] IPv4 端口跳跃规则写入失败。"
+        return 1
+    fi
+
+    _hy2_hop_add_rules_for_tool ip6tables "$main_port" "$range" >/dev/null 2>&1 || true
+
+    printf "%s\n" "$range" > /etc/sing-box/hy2_hop_ports.txt.tmp
+    printf "%s\n" "$main_port" > /etc/sing-box/hy2_hop_main_port.txt.tmp
+
+    mv -f /etc/sing-box/hy2_hop_ports.txt.tmp /etc/sing-box/hy2_hop_ports.txt
+    mv -f /etc/sing-box/hy2_hop_main_port.txt.tmp /etc/sing-box/hy2_hop_main_port.txt
+
+    chmod 600 /etc/sing-box/hy2_hop_ports.txt /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null || true
+    save_iptables >/dev/null 2>&1 || true
+
+    green " [✔] Hysteria2 端口跳跃已启用：UDP $range -> $main_port"
+    yellow " [提醒] 云厂商安全组也必须放行 UDP $range，否则外部仍然连不上。"
+    return 0
+}
+
+
 inst_hysteria2() {
     local is_first=1
+    local hop_ports=""
     [[ -f /etc/sing-box/config.json ]] && is_first=0
 
     if [[ $is_first -eq 1 ]]; then
@@ -1201,6 +1343,23 @@ echo ""
         green " 已开启混淆，密钥为: $obfs_pwd"
     fi
     
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 是否开启 Hysteria 2 端口跳跃？(y/n) [默认: n]: ${PLAIN}"
+    read enable_hop || enable_hop="n"
+    [[ -z "$enable_hop" ]] && enable_hop="n"
+
+    if [[ "$enable_hop" == "y" || "$enable_hop" == "Y" ]]; then
+        printf "%b" " ${LIGHT_YELLOW} ▶ 请输入跳跃端口范围 [示例 20000-21000]: ${PLAIN}"
+        read hop_ports || hop_ports=""
+
+        if ! _hy2_hop_validate_range "$hop_ports"; then
+            red " [错误] 跳跃端口范围无效，格式示例：20000-21000，且范围不能超过 20000 个端口。"
+            return 1
+        fi
+
+        green " 已设置端口跳跃范围：UDP $hop_ports -> $port"
+    fi
+
     local listen_addr="::"
     [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
 
@@ -1237,6 +1396,13 @@ echo ""
     return 1
   fi
     restart_singbox_checked || return 1
+
+    if [[ -n "$hop_ports" ]]; then
+        enable_hy2_port_hopping "$port" "$hop_ports" || return 1
+    else
+        rm -f /etc/sing-box/hy2_hop_ports.txt /etc/sing-box/hy2_hop_main_port.txt 2>/dev/null || true
+    fi
+
     generate_client_configs
     
     echo ""
