@@ -120,7 +120,19 @@ generate_client_configs() {
         local node_name=$(cat /etc/sing-box/hy2_name.txt 2>/dev/null || echo "Hy2_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
-        eval "$(jq -r '.inbounds[] | select(.tag=="hy2-in") | @sh "local bind_port=\(.listen_port) pwd=\(.users[0].password) obfs=\(.obfs.password // \"\")"' /etc/sing-box/config.json 2>/dev/null)"
+        local bind_port=""
+        local pwd=""
+        local obfs=""
+
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || bind_port=""
+        pwd=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || pwd=""
+        obfs=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.obfs.password // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || obfs=""
+
+        if [[ ! "$bind_port" =~ ^[0-9]+$ || -z "$pwd" ]]; then
+            red " [错误] Hysteria2 节点参数读取失败，无法生成客户端 JSON。"
+            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config.json 2>/dev/null || true
+            return 1
+        fi
         local hop_ports=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
         [[ ! "$hop_ports" =~ ^[0-9]+-[0-9]+$ ]] && hop_ports=""
         # 通用 hysteria2:// URI 使用主监听端口，避免部分客户端/订阅转换器无法解析端口范围。
@@ -263,7 +275,21 @@ generate_client_configs() {
         local node_name=$(cat /etc/sing-box/vless_name.txt 2>/dev/null || echo "Vless_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
-        eval "$(jq -r '.inbounds[] | select(.tag=="vless-in") | @sh "local bind_port=\(.listen_port) uuid=\(.users[0].uuid) sni=\(.tls.server_name // \"\") sid=\(.tls.reality.short_id[0] // \"\")"' /etc/sing-box/config.json 2>/dev/null)"
+        local bind_port=""
+        local uuid=""
+        local sni=""
+        local sid=""
+
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || bind_port=""
+        uuid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || uuid=""
+        sni=$(jq -r '[.inbounds[]? | select(.tag=="vless-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || sni=""
+        sid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.tls.reality.short_id[0] // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || sid=""
+
+        if [[ ! "$bind_port" =~ ^[0-9]+$ || -z "$uuid" || -z "$sid" ]]; then
+            red " [错误] VLESS 节点参数读取失败，无法生成客户端 JSON。"
+            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config.json 2>/dev/null || true
+            return 1
+        fi
         [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/vless_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
         local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
   local s_reality_pub=""
