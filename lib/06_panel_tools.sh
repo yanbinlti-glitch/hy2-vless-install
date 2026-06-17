@@ -278,152 +278,193 @@ config_outbound() {
     clear
     echo ""
     print_line
-    green "             Sing-box 落地代理与分流 (IP 中转) 设置            "
+    green " Sing-box 落地代理与分流 (IP 中转) 设置 "
     print_line
     echo ""
 
     if [[ ! -f /etc/sing-box/config.json ]]; then
-        red "  未检测到 Sing-box 配置文件，请先安装！"
-        sleep 2; return
+        red " 未检测到 Sing-box 配置文件，请先安装！"
+        sleep 2
+        return
     fi
-
 
     local outbound_tmp_dir=""
     local outbound_block_tmp=""
-    local ob_opt_tmp=""
     local config_tmp=""
+    local outbound_jq_err=""
 
-    _prepare_config_tmp_dir || {
-      red " [错误] 无法准备私有配置临时目录。"
-      return 1
+    _outbound_pause() {
+        echo ""
+        printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回菜单...${PLAIN}"
+        read _tmp_wait || true
     }
 
-    outbound_tmp_dir=$(
-      mktemp -d \
-        "$HY2_CONFIG_TMP_DIR/panel_outbound.XXXXXX"
-    ) || {
-      red " [错误] 无法创建落地代理私有临时目录。"
-      return 1
+    _outbound_cleanup() {
+        [[ -n "$outbound_tmp_dir" && -d "$outbound_tmp_dir" ]] && rm -rf -- "$outbound_tmp_dir"
+    }
+
+    _prepare_config_tmp_dir || {
+        red " [错误] 无法准备私有配置临时目录。"
+        _outbound_pause
+        return 1
+    }
+
+    outbound_tmp_dir="$(mktemp -d "$HY2_CONFIG_TMP_DIR/panel_outbound.XXXXXX")" || {
+        red " [错误] 无法创建落地代理私有临时目录。"
+        _outbound_pause
+        return 1
     }
 
     chmod 0700 "$outbound_tmp_dir" || {
-      rm -rf -- "$outbound_tmp_dir"
-      return 1
+        red " [错误] 无法保护落地代理临时目录。"
+        _outbound_cleanup
+        _outbound_pause
+        return 1
     }
 
     outbound_block_tmp="$outbound_tmp_dir/outbound_block.json"
-    ob_opt_tmp="$outbound_tmp_dir/ob_opt.json"
     config_tmp="$outbound_tmp_dir/config.json"
+    outbound_jq_err="$outbound_tmp_dir/jq.err"
 
-    trap 'rm -rf -- "$outbound_tmp_dir"' RETURN
+    local current_outbound=""
+    current_outbound="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box/config.json 2>/dev/null)"
 
-    local current_outbound=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config.json 2>/dev/null)
     if [[ -n "$current_outbound" && "$current_outbound" != "null" ]]; then
-        local out_server=$(jq -r '.outbounds[] | select(.tag=="proxy") | .server' /etc/sing-box/config.json 2>/dev/null)
-        local is_tls=$(jq -r '.outbounds[] | select(.tag=="proxy") | .tls.enabled' /etc/sing-box/config.json 2>/dev/null)
-        
-        local display_type="$current_outbound"
-        [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="https"
-        
+        local out_server=""
+        local is_tls=""
+        local display_type=""
         local is_global="智能分流"
-        if jq -e '.route.rules[] | select(.outbound=="proxy" and .inbound != null)' /etc/sing-box/config.json >/dev/null 2>&1; then is_global="指定节点"; elif jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config.json >/dev/null 2>&1; then is_global="全局"; fi
-        yellow "  当前状态: [已开启] 落地代理模式 (类型: ${display_type^^} | 目标: $out_server | 模式: $is_global)"
+
+        out_server="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box/config.json 2>/dev/null)"
+        is_tls="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box/config.json 2>/dev/null)"
+        display_type="$current_outbound"
+        [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="https"
+
+        if jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and .inbound != null)' /etc/sing-box/config.json >/dev/null 2>&1; then
+            is_global="指定节点"
+        elif jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config.json >/dev/null 2>&1; then
+            is_global="全局"
+        fi
+
+        yellow " 当前状态: [已开启] 落地代理模式 (类型: ${display_type^^} | 目标: $out_server | 模式: $is_global)"
     else
-        green "  当前状态: [未开启] 本机 IP 直连输出"
+        green " 当前状态: [未开启] 本机 IP 直连输出"
     fi
+
     echo ""
-    
-    printf "%b
-" "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 智能分流代理 (仅 Netflix/ChatGPT 等流媒体走中转)${PLAIN}"
-    printf "%b
-" "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走落地中转)${PLAIN}"
-    printf "%b
-" "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}配置 指定节点中转 (仅让特定节点走落地中转)${PLAIN}"
-    printf "%b
-" "    ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
+    printf "%b " " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}配置 智能分流代理 (仅 Netflix/ChatGPT 等流媒体走中转)${PLAIN}"
+    printf "%b " " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_CYAN}配置 全局中转代理 (所有出站流量强制走落地中转)${PLAIN}"
+    printf "%b " " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}配置 指定节点中转 (仅让特定节点走落地中转)${PLAIN}"
+    printf "%b " " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_RED}退回 服务器本机直连 (关闭当前落地代理)${PLAIN}"
     echo ""
-    printf "%b
-" "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
+    printf "%b " " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
-    read out_choice || exit 1
+    read out_choice || {
+        _outbound_cleanup
+        return
+    }
 
-    case $out_choice in
+    case "$out_choice" in
         1|2|3)
             echo ""
-            yellow "  ▶ 请选择落地代理协议类型:"
-            printf "%b
-" "    ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
-            printf "%b
-" "    ${LIGHT_GREEN}[2]${PLAIN} HTTP"
-            printf "%b
-" "    ${LIGHT_GREEN}[3]${PLAIN} HTTPS (HTTP + TLS)"
+            yellow " ▶ 请选择落地代理协议类型:"
+            printf "%b " " ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
+            printf "%b " " ${LIGHT_GREEN}[2]${PLAIN} HTTP"
+            printf "%b " " ${LIGHT_GREEN}[3]${PLAIN} HTTPS (HTTP + TLS)"
             printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
             read proxy_type_choice || proxy_type_choice=1
             [[ -z "$proxy_type_choice" ]] && proxy_type_choice=1
-            
+
             local proxy_type="socks"
             local proxy_tls="false"
+
             case "$proxy_type_choice" in
-                2) proxy_type="http"; proxy_tls="false" ;;
-                3) proxy_type="http"; proxy_tls="true" ;;
-                *) proxy_type="socks"; proxy_tls="false" ;;
+                2)
+                    proxy_type="http"
+                    proxy_tls="false"
+                    ;;
+                3)
+                    proxy_type="http"
+                    proxy_tls="true"
+                    ;;
+                *)
+                    proxy_type="socks"
+                    proxy_tls="false"
+                    ;;
             esac
 
             echo ""
-            yellow "  ▶ 请输入落地代理节点信息:"
+            yellow " ▶ 请输入落地代理节点信息:"
             printf "%b" " ${LIGHT_YELLOW} ▶ IP 或 域名: ${PLAIN}"
-            read proxy_addr || exit 1
-            [[ -z "$proxy_addr" ]] && return
-            
-            printf "%b" " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
-            read proxy_port || exit 1
-            if [[ ! "$proxy_port" =~ ^[0-9]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
-                red "  [错误] 端口格式无效！"
-                sleep 2; return
+            read proxy_addr || proxy_addr=""
+            if [[ -z "$proxy_addr" ]]; then
+                red " [错误] IP 或域名不能为空。"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
             fi
-            
+
+            printf "%b" " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
+            read proxy_port || proxy_port=""
+            if [[ ! "$proxy_port" =~ ^[0-9]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
+                red " [错误] 端口格式无效！请输入 1-65535。"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
+            fi
+
             printf "%b" " ${LIGHT_YELLOW} ▶ 用户名 (留空为无鉴权): ${PLAIN}"
             read proxy_user || proxy_user=""
-            
+
             printf "%b" " ${LIGHT_YELLOW} ▶ 密码 (留空为无鉴权): ${PLAIN}"
             read proxy_pass || proxy_pass=""
 
             local target_inbound=""
+
             if [[ "$out_choice" == "3" ]]; then
-                check_installed_nodes 2>/dev/null || { [[ -f /etc/sing-box/hy2_name.txt ]] && has_hy2=1 || has_hy2=0; [[ -f /etc/sing-box/vless_name.txt ]] && has_vless=1 || has_vless=0; }
-                if [[ ${has_hy2:-0} -eq 1 && ${has_vless:-0} -eq 1 ]]; then
+                local has_hy2_cfg=0
+                local has_vless_cfg=0
+
+                jq -e '.inbounds[]? | select(.tag=="hy2-in")' /etc/sing-box/config.json >/dev/null 2>&1 && has_hy2_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="vless-in")' /etc/sing-box/config.json >/dev/null 2>&1 && has_vless_cfg=1
+
+                if [[ "$has_hy2_cfg" -eq 1 && "$has_vless_cfg" -eq 1 ]]; then
                     echo ""
-                    yellow "  ▶ 请选择要中转的节点:"
-                    printf "%b
-" "    ${LIGHT_GREEN}[1]${PLAIN} 仅中转 Hysteria 2"
-                    printf "%b
-" "    ${LIGHT_GREEN}[2]${PLAIN} 仅中转 VLESS"
+                    yellow " ▶ 请选择要中转的节点:"
+                    printf "%b " " ${LIGHT_GREEN}[1]${PLAIN} 仅中转 Hysteria 2"
+                    printf "%b " " ${LIGHT_GREEN}[2]${PLAIN} 仅中转 VLESS"
                     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2]: ${PLAIN}"
-                    read inbound_choice
-                    if [[ "$inbound_choice" == "1" ]]; then target_inbound="hy2-in"; else target_inbound="vless-in"; fi
-                elif [[ ${has_hy2:-0} -eq 1 ]]; then
+                    read inbound_choice || inbound_choice=1
+
+                    if [[ "$inbound_choice" == "2" ]]; then
+                        target_inbound="vless-in"
+                    else
+                        target_inbound="hy2-in"
+                    fi
+                elif [[ "$has_hy2_cfg" -eq 1 ]]; then
                     target_inbound="hy2-in"
-                elif [[ ${has_vless:-0} -eq 1 ]]; then
+                elif [[ "$has_vless_cfg" -eq 1 ]]; then
                     target_inbound="vless-in"
                 else
-                    red "  [错误] 未检测到任何节点入站！"
-                    sleep 2; return
+                    red " [错误] 未检测到任何节点入站！"
+                    _outbound_cleanup
+                    _outbound_pause
+                    return 1
                 fi
             fi
 
-            # 使用单次 jq 构造代理对象，避免读取上一次运行残留文件。
             echo ""
-            yellow " 正在使用 jq 结构化防注入装配代理节点与路由分流规则..."
+            yellow " 正在生成落地代理 outbound 对象..."
 
             if ! jq \
-              --arg type "$proxy_type" \
-              --arg tls "$proxy_tls" \
-              --arg addr "$proxy_addr" \
-              --arg port "$proxy_port" \
-              --arg user "$proxy_user" \
-              --arg pass "$proxy_pass" \
-              '
+                --arg type "$proxy_type" \
+                --arg tls "$proxy_tls" \
+                --arg addr "$proxy_addr" \
+                --arg port "$proxy_port" \
+                --arg user "$proxy_user" \
+                --arg pass "$proxy_pass" \
+                '
                 {
                     type: $type,
                     tag: "proxy",
@@ -432,155 +473,194 @@ config_outbound() {
                     tcp_fast_open: true
                 }
                 | if $type == "socks" then . + { version: "5" } else . end
-                | if $user != ""
-                  then . + {
-                    username: $user,
-                    password: $pass
-                  }
-                  else .
-                  end
-                | if $tls == "true"
-                  then . + {
-                    tls: {
-                      enabled: true,
-                      server_name: $addr,
-                      insecure: true
-                    }
-                  }
-                  else .
-                  end
-              ' \
-              <<<'{}' \
-              > "$outbound_block_tmp"
+                | if $user != "" then . + { username: $user, password: $pass } else . end
+                | if $tls == "true" then . + { tls: { enabled: true, server_name: $addr, insecure: true } } else . end
+                ' \
+                <<<'{}' \
+                > "$outbound_block_tmp" \
+                2>"$outbound_jq_err"
             then
-              red " [错误] 无法生成落地代理对象。"
-              return 1
+                red " [错误] 无法生成落地代理对象。"
+                [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
+                _outbound_cleanup
+                _outbound_pause
+                return 1
             fi
 
-            if ! jq -e \
-              '
+            if ! jq -e '
                 type == "object"
-                and .tag == "proxy"
+                and (.tag == "proxy")
                 and (.server | type == "string")
+                and (.server | length > 0)
                 and (.server_port | type == "number")
-              ' \
-              "$outbound_block_tmp" \
-              >/dev/null
-            then
-              red " [错误] 生成的落地代理对象结构无效。"
-              return 1
+                and (.server_port >= 1 and .server_port <= 65535)
+                and ((.type == "socks") or (.type == "http"))
+            ' "$outbound_block_tmp" >/dev/null 2>&1; then
+                red " [错误] 生成的落地代理对象结构无效。"
+                cat "$outbound_block_tmp" 2>/dev/null || true
+                _outbound_cleanup
+                _outbound_pause
+                return 1
             fi
 
             if ! _begin_singbox_config_transaction; then
-              red " [错误] 无法创建落地代理配置事务备份。"
-              return 1
+                red " [错误] 无法创建落地代理配置事务备份。"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
             fi
+
+            yellow " 正在写入 Sing-box 落地代理配置..."
 
             if [[ "$out_choice" == "1" ]]; then
                 jq --slurpfile ob "$outbound_block_tmp" '
-                  del(.outbounds[] | select(.tag=="proxy")) |
-                  del(.route.rules[] | select(.outbound=="proxy")) |
-              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
-                  .outbounds += $ob |
-                  .route.rules = [{"network": "udp", "port": 443, "action": "route", "outbound": "block"}, {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}] + .route.rules
+                    (.outbounds //= [])
+                    | (.route.rules //= [])
+                    | del(.outbounds[]? | select(.tag=="proxy"))
+                    | del(.route.rules[]? | select((.outbound // "")=="proxy"))
+                    | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
+                    | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
+                    | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
+                    | .outbounds += [$ob[0]]
+                    | .route.rules = [
+                        {"network": "udp", "port": 443, "action": "route", "outbound": "block"},
+                        {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}
+                    ] + .route.rules
                 ' /etc/sing-box/config.json > "$config_tmp"
-            elif [[ "$out_choice" == "3" ]]; then
-                jq --slurpfile ob "$outbound_block_tmp" --arg inb "$target_inbound" '
-                  del(.outbounds[] | select(.tag=="proxy")) |
-                  del(.route.rules[] | select(.outbound=="proxy")) |
-              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
-                  .outbounds += $ob |
-                  .route.rules = [{"inbound": [$inb], "action": "route", "outbound": "proxy"}] + .route.rules
-                ' /etc/sing-box/config.json > "$config_tmp"
-            else
+            elif [[ "$out_choice" == "2" ]]; then
                 jq --slurpfile ob "$outbound_block_tmp" '
-                  del(.outbounds[] | select(.tag=="proxy")) |
-                  del(.route.rules[] | select(.outbound=="proxy")) |
-              del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443)) |
-                  .outbounds += $ob |
-                  .route.rules = [{"protocol": "dns", "action": "route", "outbound": "direct"}, {"port": 53, "action": "route", "outbound": "direct"}, {"network": "udp", "port": 443, "action": "route", "outbound": "block"}] + .route.rules + [{"action": "route", "outbound": "proxy"}]
+                    (.outbounds //= [])
+                    | (.route.rules //= [])
+                    | del(.outbounds[]? | select(.tag=="proxy"))
+                    | del(.route.rules[]? | select((.outbound // "")=="proxy"))
+                    | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
+                    | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
+                    | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
+                    | .outbounds += [$ob[0]]
+                    | .route.rules = [
+                        {"protocol": "dns", "action": "route", "outbound": "direct"},
+                        {"port": 53, "action": "route", "outbound": "direct"},
+                        {"network": "udp", "port": 443, "action": "route", "outbound": "block"}
+                    ] + .route.rules + [
+                        {"action": "route", "outbound": "proxy"}
+                    ]
+                ' /etc/sing-box/config.json > "$config_tmp"
+            else
+                jq --slurpfile ob "$outbound_block_tmp" --arg inb "$target_inbound" '
+                    (.outbounds //= [])
+                    | (.route.rules //= [])
+                    | del(.outbounds[]? | select(.tag=="proxy"))
+                    | del(.route.rules[]? | select((.outbound // "")=="proxy"))
+                    | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
+                    | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
+                    | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
+                    | .outbounds += [$ob[0]]
+                    | .route.rules = [
+                        {"inbound": [$inb], "action": "route", "outbound": "proxy"}
+                    ] + .route.rules
                 ' /etc/sing-box/config.json > "$config_tmp"
             fi
 
-            if [[ -s "$config_tmp" ]] &&
-               jq -e empty "$config_tmp" >/dev/null 2>&1
-            then
-              if ! mv -f -- \
-                "$config_tmp" \
-                /etc/sing-box/config.json
-              then
-                _abort_singbox_config_update \
-                  "无法发布落地代理配置"
-
+            if [[ ! -s "$config_tmp" ]] || ! jq -e empty "$config_tmp" >/dev/null 2>&1; then
+                _abort_singbox_config_update "落地代理配置生成或 JSON 校验失败"
+                _outbound_cleanup
+                _outbound_pause
                 return 1
-              fi
-
-              config_tmp=""
-            else
-              _abort_singbox_config_update \
-                "落地代理配置生成或 JSON 校验失败"
-
-              return 1
             fi
-            rm -f -- "$outbound_block_tmp" "$ob_opt_tmp" 2>/dev/null || true
-            
-            green "  新落地代理配置写入完毕！"
+
+            if ! mv -f -- "$config_tmp" /etc/sing-box/config.json; then
+                _abort_singbox_config_update "无法发布落地代理配置"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
+            fi
+            config_tmp=""
+
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+
             if restart_singbox_checked; then
                 sleep 1
                 if is_svc_active sing-box; then
-                    green "  [✔] 重启成功！落地规则已全面生效。"
+                    green " [✔] 重启成功！落地代理规则已全面生效。"
                 else
-                    red "  [✘] 致命错误：新配置应用后服务无法启动！"
+                    red " [✘] 新配置应用后服务未处于运行状态。"
                 fi
             else
-                red "  [✘] 拦截生效：发现配置错误，已强行中止重启，保持旧配置以防断网！"
+                red " [✘] 拦截生效：发现配置错误，已回滚以防断网。"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
             fi
             ;;
+
         4)
             if ! _begin_singbox_config_transaction; then
-              red " [错误] 无法创建关闭代理配置事务备份。"
-              return 1
-            fi
-
-            yellow "  正在清除中转路由配置..."
-            jq 'del(.outbounds[] | select(.tag=="proxy")) | del(.route.rules[] | select(.outbound=="proxy")) | del(.route.rules[] | select(.protocol=="dns" and .outbound=="direct")) | del(.route.rules[] | select(.port==53 and .outbound=="direct")) | del(.route.rules[] | select(.network=="udp" and .port==443))' /etc/sing-box/config.json > "$config_tmp"
-            if [[ -s "$config_tmp" ]] &&
-               jq -e empty "$config_tmp" >/dev/null 2>&1
-            then
-              if ! mv -f -- \
-                "$config_tmp" \
-                /etc/sing-box/config.json
-              then
-                _abort_singbox_config_update \
-                  "无法发布落地代理配置"
-
+                red " [错误] 无法创建关闭代理配置事务备份。"
+                _outbound_cleanup
+                _outbound_pause
                 return 1
-              fi
-
-              config_tmp=""
-            else
-              _abort_singbox_config_update \
-                "落地代理配置生成或 JSON 校验失败"
-
-              return 1
             fi
-            rm -f -- "$outbound_block_tmp" "$ob_opt_tmp" 2>/dev/null || true
-            
+
+            yellow " 正在清除中转路由配置..."
+
+            jq '
+                (.outbounds //= [])
+                | (.route.rules //= [])
+                | del(.outbounds[]? | select(.tag=="proxy"))
+                | del(.route.rules[]? | select((.outbound // "")=="proxy"))
+                | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
+                | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
+                | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
+            ' /etc/sing-box/config.json > "$config_tmp"
+
+            if [[ ! -s "$config_tmp" ]] || ! jq -e empty "$config_tmp" >/dev/null 2>&1; then
+                _abort_singbox_config_update "关闭落地代理配置生成或 JSON 校验失败"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
+            fi
+
+            if ! mv -f -- "$config_tmp" /etc/sing-box/config.json; then
+                _abort_singbox_config_update "无法发布关闭落地代理配置"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
+            fi
+            config_tmp=""
+
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json 2>/dev/null || true
+
             if restart_singbox_checked; then
                 sleep 1
-                green "  [✔] 重启成功！已安全退回服务器本机 IP 直连输出模式。"
+                green " [✔] 重启成功！已安全退回服务器本机 IP 直连输出模式。"
             else
-                red "  [✘] 恢复失败：配置文件校验未通过，已强行中止重启以防断网！"
+                red " [✘] 恢复失败：配置文件校验未通过，已回滚以防断网。"
+                _outbound_cleanup
+                _outbound_pause
+                return 1
             fi
             ;;
-        0) return ;;
-        *) red "  输入无效"; sleep 1; return ;;
+
+        0)
+            _outbound_cleanup
+            return
+            ;;
+
+        *)
+            red " 输入无效"
+            _outbound_cleanup
+            _outbound_pause
+            return
+            ;;
     esac
 
+    _outbound_cleanup
+
     echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"
-    read temp
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回主菜单...${PLAIN}"
+    read temp || true
 }
+
 
 ensure_subscription_ready() {
     # 进入“查看订阅”前强制重建一次，防止 sub_path.txt 或 url.txt 丢失导致链接变成 http://IP:端口/
