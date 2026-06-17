@@ -785,7 +785,7 @@ enable_bbr() {
     [[ -z "$total_mem_kb" ]] && total_mem_kb=1048576
     local page_size=$(getconf PAGESIZE 2>/dev/null || echo 4096)
 
-            if ! [[ "$page_size" =~ ^[0-6]+$ ]] || [[ "$page_size" -le 0 ]]; then
+            if ! [[ "$page_size" =~ ^[0-9]+$ ]] || [[ "$page_size" -le 0 ]]; then
         page_size=4096
     fi
     local mem_pages=$(( total_mem_kb / (page_size / 1024) ))
@@ -1192,7 +1192,7 @@ main_port="$(cat "$main_file" 2>/dev/null | tr -d '[:space:]')"
 colon_range="${hop_range/-/:}"
 
 [[ "$hop_range" =~ ^[0-6]+-[0-6]+$ ]] || exit 0
-[[ "$main_port" =~ ^[0-6]+$ ]] || exit 0
+[[ "$main_port" =~ ^[0-9]+$ ]] || exit 0
 
 for tool in iptables ip6tables; do
     command -v "$tool" >/dev/null 2>&1 || continue
@@ -1289,7 +1289,7 @@ enable_hy2_port_hopping() {
     local main_port old_range hop_range start_port end_port range_size confirm_large old_main
     main_port=$(jq -r '.inbounds[] | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port' /etc/sing-box/config.json 2>/dev/null)
 
-    if [[ ! "$main_port" =~ ^[0-6]+$ ]]; then
+    if [[ ! "$main_port" =~ ^[0-9]+$ ]]; then
         red " [错误] 未能读取 Hy2 主端口。"
         sleep 2
         return
@@ -1466,7 +1466,7 @@ set_node_expiration() {
         1)
             printf "%b" "\n ${LIGHT_YELLOW} ▶ 请输入有效的限时天数 (正整数，如 30): ${PLAIN}"
             read exp_days
-            if [[ ! "$exp_days" =~ ^[0-6]+$ ]] || [ "$exp_days" -lt 1 ]; then
+            if [[ ! "$exp_days" =~ ^[0-9]+$ ]] || [ "$exp_days" -lt 1 ]; then
                 red " [错误] 输入格式无效！必须是大于0的正整数。"
                 sleep 2; return
             fi
