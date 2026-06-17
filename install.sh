@@ -37,6 +37,18 @@ export INSTALL_DIR
 export VERSION_FILE
 export HY2_VLESS_VERSION
 
+
+# ==========================================
+# V1.8.3 全局防并发排他锁 (Mutex Lock)
+# ==========================================
+exec 9> "/tmp/hy2_vless_panel.lock"
+if ! flock -n 9; then
+    echo -e "\n\033[1;31m [✘] 致命拦截：系统检测到面板已在另一个终端运行！\033[0m"
+    echo -e "\033[1;33m [!] 为防止底层 JSON 配置撕裂与数据损坏，已禁止并发操作。\033[0m"
+    echo -e "\033[1;33m [!] 请关闭其他正在运行的菜单实例后再试。\033[0m\n"
+    exit 1
+fi
+
 MODULES=(
   "00_ui.sh"
   "01_system.sh"
