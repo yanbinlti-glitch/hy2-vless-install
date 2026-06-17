@@ -320,7 +320,7 @@ jq_update_singbox_config() {
 
   if jq "$filter" "$config" >"$tmp" \
     && [[ -s "$tmp" ]] \
-    && jq -e empty "$tmp" >/dev/null 2>&1; then
+    && jq empty "$tmp" >/dev/null 2>&1; then
     chmod 600 "$tmp" 2>/dev/null || true
     mv -f -- "$tmp" "$config"
     return 0

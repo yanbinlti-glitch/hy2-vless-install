@@ -93,7 +93,7 @@ remove_node() {
             return 1
         fi
 
-        if [[ ! -s "$tmp" ]] || ! jq -e empty "$tmp" >/dev/null 2>&1; then
+        if [[ ! -s "$tmp" ]] || ! jq empty "$tmp" >/dev/null 2>&1; then
             rm -f "$tmp"
             _abort_singbox_config_update "卸载后的 JSON 配置无效"
             return 1
@@ -565,7 +565,7 @@ config_outbound() {
                 ' /etc/sing-box/config.json > "$config_tmp" 2>"$outbound_jq_err"
             fi
 
-            if [[ ! -s "$config_tmp" ]] || ! jq -e empty "$config_tmp" >/dev/null 2>&1; then
+            if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "落地代理配置生成或 JSON 校验失败"
                 [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
                 _outbound_cleanup
@@ -619,7 +619,7 @@ config_outbound() {
                 | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
             ' /etc/sing-box/config.json > "$config_tmp" 2>"$outbound_jq_err"
 
-            if [[ ! -s "$config_tmp" ]] || ! jq -e empty "$config_tmp" >/dev/null 2>&1; then
+            if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "关闭落地代理配置生成或 JSON 校验失败"
                 [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
                 _outbound_cleanup
