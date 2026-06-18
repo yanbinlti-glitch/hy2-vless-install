@@ -329,8 +329,8 @@ has_vless=0
 check_installed_nodes() {
     has_hy2=0
     has_vless=0
-    if [[ -f /etc/sing-box/config.json ]]; then
-        if jq -e '.inbounds[] | select(.tag=="hy2-in")' /etc/sing-box/config.json >/dev/null 2>&1; then has_hy2=1; fi
-        if jq -e '.inbounds[] | select(.tag=="vless-in")' /etc/sing-box/config.json >/dev/null 2>&1; then has_vless=1; fi
+    if [[ -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+        if jq -e '.inbounds[] | select(.tag=="hy2-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then has_hy2=1; fi
+        if jq -e '.inbounds[] | select(.tag=="vless-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then has_vless=1; fi
     fi
 }

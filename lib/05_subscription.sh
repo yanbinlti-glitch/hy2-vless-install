@@ -31,18 +31,18 @@ generate_client_configs() {
         return
     fi
 
-    local sub_port=$(cat /etc/sing-box/sub_port.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+    local sub_port=$(cat /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
     if [[ -z "$sub_port" ]]; then
         yellow "  [订阅修复] 未检测到订阅端口，正在自动生成新的订阅端口..."
         sub_port=$(shuf -i 10000-30000 -n 1)
         while ss -tnl 2>/dev/null | grep -E -q "(:|^)$sub_port( |$)"; do
             sub_port=$(shuf -i 10000-30000 -n 1)
         done
-        printf "%s\n" "$sub_port" > /etc/sing-box/sub_port.txt.tmp && mv -f /etc/sing-box/sub_port.txt.tmp /etc/sing-box/sub_port.txt
+        printf "%s\n" "$sub_port" > /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt
         open_port "$sub_port" "tcp" "sub"
     fi
 
-    local token_file="/root/.hy2_sub_uuid"
+    local token_file="/root/.hy2_sub_uuid${HY2_INSTANCE_SUFFIX}"
   local old_sub_uuid=""
   local sub_uuid=""
   local token_tmp=""
@@ -75,13 +75,13 @@ generate_client_configs() {
     if [[ -n "$old_sub_uuid" &&
           "$old_sub_uuid" =~ ^[A-Za-z0-9]{1,128}$ ]]
     then
-      rm -rf -- "/var/www/sing-box/$old_sub_uuid"
+      rm -rf -- "/var/www/sing-box${HY2_INSTANCE_SUFFIX}/$old_sub_uuid"
     fi
   fi
 
   # 在 root 私有目录中原子保存令牌。
   token_tmp=$(
-    mktemp /root/.hy2_sub_uuid.tmp.XXXXXX
+    mktemp /root/.hy2_sub_uuid${HY2_INSTANCE_SUFFIX}.tmp.XXXXXX
   ) || return 1
 
   printf '%s\n' "$sub_uuid" > "$token_tmp"
@@ -96,11 +96,11 @@ generate_client_configs() {
   install -d -m 700 /etc/sing-box
 
   printf '%s\n' "$sub_uuid" \
-    > /etc/sing-box/sub_path.txt
+    > /etc/sing-box/sub_path${HY2_INSTANCE_SUFFIX}.txt
 
-  chmod 600 /etc/sing-box/sub_path.txt
+  chmod 600 /etc/sing-box/sub_path${HY2_INSTANCE_SUFFIX}.txt
 
-  local web_dir="/var/www/sing-box"
+  local web_dir="/var/www/sing-box${HY2_INSTANCE_SUFFIX}"
 
   install -d -m 750 \
     "$web_dir/$sub_uuid"
@@ -117,31 +117,31 @@ generate_client_configs() {
 
     # ================= 聚合: Hysteria 2 =================
     if [[ $has_hy2 -eq 1 ]]; then
-        local node_name=$(cat /etc/sing-box/hy2_name.txt 2>/dev/null || echo "Hy2_Node")
+        local node_name=$(cat /etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "Hy2_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=""
         local pwd=""
         local obfs=""
 
-        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || bind_port=""
-        pwd=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || pwd=""
-        obfs=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.obfs.password // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || obfs=""
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
+        pwd=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
+        obfs=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.obfs.password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || obfs=""
 
         if [[ ! "$bind_port" =~ ^[0-9]+$ || -z "$pwd" ]]; then
             red " [错误] Hysteria2 节点参数读取失败，无法生成客户端 JSON。"
-            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config.json 2>/dev/null || true
+            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
             return 1
         fi
-        local hop_ports=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
+        local hop_ports=$(cat /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
         [[ ! "$hop_ports" =~ ^[0-9]+-[0-9]+$ ]] && hop_ports=""
         # 通用 hysteria2:// URI 使用主监听端口，避免部分客户端/订阅转换器无法解析端口范围。
         # Clash/Mihomo 与 sing-box 专用订阅仍分别通过 ports / server_ports 保留端口跳跃。
         local hy2_client_port="$bind_port"
-        local sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+        local sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
 
-        local cert_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
-        local spki_pin=$(openssl x509 -in /etc/sing-box/cert.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
+        local cert_pin=$(openssl x509 -in /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
+        local spki_pin=$(openssl x509 -in /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
 
         local yaml_pwd="${pwd//\'/\'\'}"
         local s_pwd=$(jq -nr --arg v "$pwd" '$v|@uri')
@@ -272,7 +272,7 @@ generate_client_configs() {
 
     # ================= 聚合: VLESS =================
     if [[ $has_vless -eq 1 ]]; then
-        local node_name=$(cat /etc/sing-box/vless_name.txt 2>/dev/null || echo "Vless_Node")
+        local node_name=$(cat /etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "Vless_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=""
@@ -280,18 +280,18 @@ generate_client_configs() {
         local sni=""
         local sid=""
 
-        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || bind_port=""
-        uuid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || uuid=""
-        sni=$(jq -r '[.inbounds[]? | select(.tag=="vless-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || sni=""
-        sid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.tls.reality.short_id[0] // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null) || sid=""
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
+        uuid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || uuid=""
+        sni=$(jq -r '[.inbounds[]? | select(.tag=="vless-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
+        sid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.tls.reality.short_id[0] // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sid=""
 
         if [[ ! "$bind_port" =~ ^[0-9]+$ || -z "$uuid" || -z "$sid" ]]; then
             red " [错误] VLESS 节点参数读取失败，无法生成客户端 JSON。"
-            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config.json 2>/dev/null || true
+            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
             return 1
         fi
-        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/vless_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.microsoft.com")
-        local pub=$(cat /etc/sing-box/reality_pub.txt 2>/dev/null)
+        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.microsoft.com")
+        local pub=$(cat /etc/sing-box/reality_pub${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null)
   local s_reality_pub=""
   local s_vless_sni=""
   local s_reality_sid=""
@@ -512,13 +512,13 @@ EOF
     chown -R www-data:www-data "$web_dir" 2>/dev/null || chown -R nginx:nginx "$web_dir" 2>/dev/null
     chmod -R 750 "$web_dir"
 
-    local nginx_conf_file="/etc/nginx/conf.d/sing-box-sub.conf"
+    local nginx_conf_file="/etc/nginx/conf.d/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf"
     if [[ $SYSTEM == "Ubuntu" || $SYSTEM == "Debian" ]]; then
         mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
-        nginx_conf_file="/etc/nginx/sites-available/sing-box-sub.conf"
+        nginx_conf_file="/etc/nginx/sites-available/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf"
     elif [[ $SYSTEM == "Alpine" ]]; then
         mkdir -p /etc/nginx/http.d
-        nginx_conf_file="/etc/nginx/http.d/sing-box-sub.conf"
+        nginx_conf_file="/etc/nginx/http.d/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf"
     else
         mkdir -p /etc/nginx/conf.d
     fi
@@ -595,7 +595,7 @@ EOF
     rm -f "$nginx_conf_candidate"
 
     if [[ $SYSTEM == "Ubuntu" || $SYSTEM == "Debian" ]]; then
-        ln -sf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/sites-enabled/
+        ln -sf /etc/nginx/sites-available/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf /etc/nginx/sites-enabled/
     fi
 
     yellow " 正在执行 Nginx 配置校验，完整输出如下："
@@ -627,7 +627,7 @@ EOF
         rm -f "$nginx_conf_file"
 
         if [[ "$SYSTEM" == "Ubuntu" || "$SYSTEM" == "Debian" ]]; then
-          rm -f /etc/nginx/sites-enabled/sing-box-sub.conf
+          rm -f /etc/nginx/sites-enabled/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf
         fi
       fi
 
@@ -655,23 +655,23 @@ clean_env() {
     close_port_by_tag "vless-in"
     close_port_by_tag "sub"
 
-    svc_stop sing-box
-    svc_disable sing-box
+    svc_stop sing-box${HY2_INSTANCE_SUFFIX}
+    svc_disable sing-box${HY2_INSTANCE_SUFFIX}
     
-    rm -f /etc/nginx/conf.d/sing-box-sub.conf /etc/nginx/sites-available/sing-box-sub.conf /etc/nginx/sites-enabled/sing-box-sub.conf /etc/nginx/http.d/sing-box-sub.conf
+    rm -f /etc/nginx/conf.d/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf /etc/nginx/sites-available/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf /etc/nginx/sites-enabled/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf /etc/nginx/http.d/sing-box-sub${HY2_INSTANCE_SUFFIX}.conf
     if is_svc_active nginx; then
         if [[ $SYSTEM == "Alpine" ]]; then rc-service nginx reload; else systemctl reload nginx; fi
     fi
 
     if [[ $SYSTEM == "Alpine" ]]; then
-        rm -f /etc/init.d/sing-box
+        rm -f /etc/init.d/sing-box${HY2_INSTANCE_SUFFIX}
     else
-        rm -f /etc/systemd/system/sing-box.service
+        rm -f /etc/systemd/system/sing-box${HY2_INSTANCE_SUFFIX}.service
         _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload
     fi
     save_iptables
 
-    rm -rf /etc/sing-box /var/www/sing-box
+    rm -rf /etc/sing-box /var/www/sing-box${HY2_INSTANCE_SUFFIX}
     if [[ "$mode" == "all" ]]; then
         rm -f /usr/local/bin/sing-box
         rm -f /usr/bin/666 /usr/bin/hy2

@@ -306,7 +306,7 @@ run_quiet() {
 
 jq_update_singbox_config() {
   local filter="$1"
-  local config="${2:-/etc/sing-box/config.json}"
+  local config="${2:-/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json}"
   local tmp_dir="${HY2_CONFIG_TMP_DIR:-/etc/sing-box/.tmp}"
   local tmp=""
 

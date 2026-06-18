@@ -485,6 +485,28 @@ done
 
 install_self_shortcut
 
+export HY2_INSTANCE_ID="1"
+export HY2_INSTANCE_SUFFIX=""
+
+clear
+printf "
+[1;36m==================================================================================[0m
+"
+printf "       👥 请选择要管理的 Sing-box 实例分身        
+"
+printf "[1;36m==================================================================================[0m
+"
+printf "    [1;32m[1][0m 部署/管理 [1;33m实例本尊[0m (Instance 1, 默认环境)
+"
+printf "    [1;32m[2][0m 部署/管理 [1;35m实例分身[0m (Instance 2, 完全独立的端口与进程)
+"
+printf "  [1;33m▶[0m 请输入选项 [1-2] (默认1): "
+read instance_choice
+if [[ "$instance_choice" == "2" ]]; then
+    export HY2_INSTANCE_ID="2"
+    export HY2_INSTANCE_SUFFIX="_2"
+fi
+
 while true; do
   menu
 done
