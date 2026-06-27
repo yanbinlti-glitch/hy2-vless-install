@@ -1602,23 +1602,28 @@ inst_singbox() {
     echo ""
     green " ──────────────────────────────────────────────────────────"
     green "                 底层代理协议选择配置                      "
-    green " ──────────────────────────────────────────────────────────"
-    echo ""
-    yellow "  Sing-box 核心支持多协议矩阵，您可以先选装一个，后续可再次进入菜单补齐："
-    echo ""
-    printf "%b
-" "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}"
-    printf "%b
-" "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}"
-    echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2] (默认1): ${PLAIN}"
+    printf "%b\n" \
+" " \
+"    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}" \
+" " \
+"    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}" \
+" " \
+"    ${LIGHT_CYAN}[3]${PLAIN} ${LIGHT_BLUE}TUIC v5${PLAIN} ${LIGHT_CYAN}(基于 UDP/QUIC，低延迟，移动网络友好)${PLAIN}" \
+" "
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
     read protoInput || protoInput=1
     [[ -z "$protoInput" ]] && protoInput=1
 
-    if [[ "$protoInput" == "2" ]]; then
-        inst_vless_reality
-    else
-        inst_hysteria2
-    fi
+    case "$protoInput" in
+        2)
+            inst_vless_reality
+            ;;
+        3)
+            inst_tuic
+            ;;
+        *)
+            inst_hysteria2
+            ;;
+    esac
 }
 
