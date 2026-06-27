@@ -39,7 +39,7 @@ export HY2_VLESS_VERSION
 
 
 # ==========================================
-# V1.8.38 全局防并发排他锁 (Mutex Lock)
+# V1.8.39 全局防并发排他锁 (Mutex Lock)
 # ==========================================
 exec 9> "/tmp/hy2_vless_panel.lock"
 if ! flock -n 9; then
@@ -303,6 +303,7 @@ verify_bootstrap_checksums() {
 }
 
 
+
 validate_required_symbols() {
  local menu_file="$SCRIPT_DIR/lib/07_menu.sh"
 
@@ -348,6 +349,7 @@ load_modules() {
 
  return 0
 }
+
 
 validate_local_bundle() {
  local module=""
@@ -501,6 +503,7 @@ ensure_modules() {
   return "$rc"
 }
 
+
 install_self_shortcut() {
  # 模块化后不能再只把单个 install.sh 复制到 /usr/bin/666。
  # 正确做法：把入口和 lib/ 一起落盘到 /opt，再创建 666 包装器。
@@ -532,6 +535,8 @@ EOF_WRAPPER
 
  chmod +x /usr/bin/666
 }
+
+
 
 ensure_modules || exit 1
 
