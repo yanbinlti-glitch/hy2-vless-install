@@ -1182,14 +1182,33 @@ modify_tuic_self_signed_cert() {
     print_line
     green " 修改 TUIC v5 自签名证书 / SNI "
     print_line
-    yellow " 说明：当前 Hy2 与 TUIC 共用 /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt 与 private${HY2_INSTANCE_SUFFIX}.key。"
-    yellow " 本功能会复用 Hy2 自签证书生成流程，然后同步补写 tuic-in.tls.server_name。"
-    echo ""
 
-    modify_hy2_self_signed_cert || return 1
+    local current_sni new_sni sni_choice
+    current_sni="$(jq -r '.inbounds[]? | select(.tag=="tuic-in") | .tls.server_name // empty' "$config" 2>/dev/null || true)"
+    [[ -z "$current_sni" || "$current_sni" == "null" || "$current_sni" == "-1" ]] && current_sni="$(cat "$sni_file" 2>/dev/null || echo "www.bing.com")"
 
-    local new_sni=""
-    new_sni="$(cat "$sni_file" 2>/dev/null || echo "www.bing.com")"
+    yellow " 当前 TUIC 证书域名 / SNI: $current_sni"
+    yellow " 请选择新的 TUIC 证书域名 / SNI:"
+    printf "%b\n" "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com"
+    printf "%b\n" "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
+    printf "%b\n" "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
+    printf "%b\n" "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-4] (回车保持原样: $current_sni): ${PLAIN}"
+    read sni_choice || sni_choice=0
+    [[ -z "$sni_choice" ]] && sni_choice=0
+
+    case "$sni_choice" in
+        1) new_sni="www.bing.com" ;;
+        2) new_sni="www.apple.com" ;;
+        3) new_sni="www.microsoft.com" ;;
+        4)
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入自定义 TUIC SNI: ${PLAIN}"
+            read new_sni || new_sni="$current_sni"
+            [[ -z "$new_sni" ]] && new_sni="$current_sni"
+            ;;
+        *) new_sni="$current_sni" ;;
+    esac
+
     new_sni="${new_sni//$'\r'/}"
     new_sni="${new_sni//$'\n'/}"
     new_sni="${new_sni//\\r/}"
@@ -1197,12 +1216,80 @@ modify_tuic_self_signed_cert() {
     new_sni="$(printf "%s" "$new_sni" | tr -d '[:space:]')"
 
     if [[ -z "$new_sni" || "$new_sni" == "-1" || "$new_sni" == "null" || "$new_sni" == "NULL" ]]; then
-        new_sni="www.bing.com"
-        printf "%s\n" "$new_sni" > "${sni_file}.tmp" && mv -f "${sni_file}.tmp" "$sni_file"
-        chmod 600 "$sni_file" 2>/dev/null || true
+        red " [错误] TUIC SNI 不合法。"
+        sleep 2
+        return 1
     fi
 
-    local clean_name=""
+    if [[ ! "$new_sni" =~ ^[A-Za-z0-9.-]+$ ]]; then
+        red " [错误] SNI 格式不合法，仅允许字母、数字、点和横杠。"
+        sleep 2
+        return 1
+    fi
+
+    if ! command -v openssl >/dev/null 2>&1; then
+        red " [错误] 未找到 openssl，无法生成自签名证书。"
+        sleep 2
+        return 1
+    fi
+
+    local ts cert_bak key_bak sni_bak config_bak name_bak tmp_dir
+    ts="$(date +%F-%H%M%S)"
+    cert_bak="/tmp/tuic-cert.crt.bak.$ts"
+    key_bak="/tmp/tuic-private.key.bak.$ts"
+    sni_bak="/tmp/tuic-cert_sni.txt.bak.$ts"
+    config_bak="${config}.bak.tuic-cert.$ts"
+    name_bak="/tmp/tuic-name.txt.bak.$ts"
+    tmp_dir="/tmp/hy2-tuic-cert.$$"
+
+    [[ -f "$cert_file" ]] && cp -a "$cert_file" "$cert_bak"
+    [[ -f "$key_file" ]] && cp -a "$key_file" "$key_bak"
+    [[ -f "$sni_file" ]] && cp -a "$sni_file" "$sni_bak"
+    [[ -f "$name_file" ]] && cp -a "$name_file" "$name_bak"
+    cp -a "$config" "$config_bak"
+
+    mkdir -p "$tmp_dir"
+
+    cat > "$tmp_dir/openssl.cnf" <<EOF
+[req]
+default_bits = 2048
+prompt = no
+distinguished_name = dn
+x509_extensions = v3_req
+
+[dn]
+CN = $new_sni
+
+[v3_req]
+subjectAltName = DNS:$new_sni
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+EOF
+
+    yellow " 正在生成 TUIC v5 自签名证书..."
+    if ! openssl req -x509 -nodes -newkey ec \
+        -pkeyopt ec_paramgen_curve:prime256v1 \
+        -days 3650 \
+        -keyout "$tmp_dir/private.key" \
+        -out "$tmp_dir/cert.crt" \
+        -config "$tmp_dir/openssl.cnf" >/dev/null 2>&1; then
+        red " [错误] TUIC 自签名证书生成失败，正在回滚。"
+        [[ -f "$cert_bak" ]] && mv -f "$cert_bak" "$cert_file"
+        [[ -f "$key_bak" ]] && mv -f "$key_bak" "$key_file"
+        [[ -f "$sni_bak" ]] && mv -f "$sni_bak" "$sni_file"
+        [[ -f "$name_bak" ]] && mv -f "$name_bak" "$name_file"
+        mv -f "$config_bak" "$config"
+        rm -rf "$tmp_dir"
+        sleep 2
+        return 1
+    fi
+
+    install -m 600 "$tmp_dir/private.key" "$key_file"
+    install -m 644 "$tmp_dir/cert.crt" "$cert_file"
+    printf "%s\n" "$new_sni" > "${sni_file}.tmp" && mv -f "${sni_file}.tmp" "$sni_file"
+    chmod 600 "$sni_file" 2>/dev/null || true
+
+    local clean_name
     clean_name="$(cat "$name_file" 2>/dev/null || echo "TUIC_Node")"
     clean_name="${clean_name//$'\r'/}"
     clean_name="${clean_name//$'\n'/}"
@@ -1211,9 +1298,6 @@ modify_tuic_self_signed_cert() {
     [[ -z "$clean_name" || "$clean_name" == "-1" || "$clean_name" == "null" || "$clean_name" == "NULL" ]] && clean_name="TUIC_Node"
     printf "%s\n" "$clean_name" > "${name_file}.tmp" && mv -f "${name_file}.tmp" "$name_file"
     chmod 600 "$name_file" 2>/dev/null || true
-
-    local backup="/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.tuic-cert.$(date +%F-%H%M%S)"
-    cp -a "$config" "$backup"
 
     if ! jq --arg sni "$new_sni" --arg cp "$cert_file" --arg kp "$key_file" '
         (.inbounds[]? | select(.tag=="tuic-in") | .tls) |=
@@ -1226,24 +1310,35 @@ modify_tuic_self_signed_cert() {
         })
     ' "$config" > /tmp/sb_tuic_cert.json; then
         red " [错误] 写入 TUIC TLS 配置失败，正在回滚。"
-        mv -f "$backup" "$config"
-        rm -f /tmp/sb_tuic_cert.json
+        [[ -f "$cert_bak" ]] && mv -f "$cert_bak" "$cert_file"
+        [[ -f "$key_bak" ]] && mv -f "$key_bak" "$key_file"
+        [[ -f "$sni_bak" ]] && mv -f "$sni_bak" "$sni_file"
+        [[ -f "$name_bak" ]] && mv -f "$name_bak" "$name_file"
+        mv -f "$config_bak" "$config"
+        rm -rf "$tmp_dir" /tmp/sb_tuic_cert.json
         sleep 2
         return 1
     fi
 
     mv -f /tmp/sb_tuic_cert.json "$config"
-    chmod 600 "$config" 2>/dev/null || true
+    chmod 600 "$config" "$key_file" "$sni_file" "$name_file" 2>/dev/null || true
 
     if command -v /usr/local/bin/sing-box >/dev/null 2>&1; then
         if ! /usr/local/bin/sing-box check -c "$config" >/tmp/tuic-cert-check.log 2>&1; then
             red " [错误] Sing-box 配置校验失败，正在回滚。"
             cat /tmp/tuic-cert-check.log 2>/dev/null || true
-            mv -f "$backup" "$config"
+            [[ -f "$cert_bak" ]] && mv -f "$cert_bak" "$cert_file"
+            [[ -f "$key_bak" ]] && mv -f "$key_bak" "$key_file"
+            [[ -f "$sni_bak" ]] && mv -f "$sni_bak" "$sni_file"
+            [[ -f "$name_bak" ]] && mv -f "$name_bak" "$name_file"
+            mv -f "$config_bak" "$config"
+            rm -rf "$tmp_dir"
             sleep 2
             return 1
         fi
     fi
+
+    rm -rf "$tmp_dir"
 
     if declare -F svc_restart >/dev/null 2>&1; then
         svc_restart "sing-box${HY2_INSTANCE_SUFFIX}" || {
@@ -1257,10 +1352,13 @@ modify_tuic_self_signed_cert() {
 
     generate_client_configs || true
 
-    green " [✔] TUIC v5 自签名证书 / SNI 已同步更新：$new_sni"
+    green " [✔] TUIC v5 自签名证书 / SNI 已更新：$new_sni"
     green " [✔] 订阅已刷新，v2rayN 重新更新订阅即可生效。"
     sleep 2
 }
+
+
+
 
 
 hy2_hop_colon_range() {
