@@ -53,6 +53,11 @@ self_update() {
     mkdir -p "$install_dir/lib"
     [[ -d "$install_dir" ]] && cp -a "$install_dir" "$bak_dir" 2>/dev/null || true
 
+    if [[ -n "$HY2_CLONE_NAME" ]]; then
+        yellow " 正在对分身 $HY2_CLONE_NAME 实施物理隔离转换..."
+        apply_clone_transform "$HY2_CLONE_NAME" "$tmp_dir"
+    fi
+
     if ! cp -f "$tmp_dir/install.sh" "$install_dir/install.sh" || ! cp -f "$tmp_dir"/lib/*.sh "$install_dir/lib/" || ! cp -f "$tmp_dir/VERSION" "$install_dir/VERSION"; then
         red " [错误] 覆盖失败，已恢复原版。"; return 1
     fi

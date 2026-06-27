@@ -2366,3 +2366,113 @@ show_warp_ipv6_route() {
 
 
 
+
+instance_manager() {
+    while true; do
+        clear
+        print_line
+        green " 节点多开分身管控 (创建/切换/监控) "
+        print_line
+        echo ""
+        
+        local main_status="${LIGHT_RED}未运行${PLAIN}"
+        if systemctl is-active --quiet sing-box 2>/dev/null || rc-service sing-box status 2>/dev/null | grep -q 'started'; then
+            main_status="${LIGHT_GREEN}运行中${PLAIN}"
+        fi
+        printf "%b\n" " [0] 本体 (Main)          | 状态: ${main_status} | 快捷键: 666"
+        
+        local clones=()
+        local i=1
+        for dir in /opt/hy2-vless-install_*; do
+            if [[ -d "$dir" && -f "$dir/install.sh" ]]; then
+                local cname="${dir#/opt/hy2-vless-install_}"
+                clones+=("$cname")
+                local cstatus="${LIGHT_RED}未运行${PLAIN}"
+                if systemctl is-active --quiet "sing-box_${cname}" 2>/dev/null || rc-service "sing-box_${cname}" status 2>/dev/null | grep -q 'started'; then
+                    cstatus="${LIGHT_GREEN}运行中${PLAIN}"
+                fi
+                printf "%b\n" " [$i] 分身 ($cname) | 状态: ${cstatus} | 快捷键: 666_${cname}"
+                ((i++))
+            fi
+        done
+        
+        echo ""
+        printf "%b\n" " ${LIGHT_GREEN}[c]${PLAIN} ${LIGHT_CYAN}创建新分身${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[d]${PLAIN} ${LIGHT_RED}删除分身${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[q]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
+        echo ""
+        printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 (切换输入数字，管理输入字母): ${PLAIN}"
+        read ic_choice || return
+        
+        if [[ "$ic_choice" == "q" || "$ic_choice" == "Q" ]]; then
+            return
+        elif [[ "$ic_choice" == "c" || "$ic_choice" == "C" ]]; then
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新分身的名称 (仅限英文和数字，例如 node2): ${PLAIN}"
+            read new_clone
+            if [[ ! "$new_clone" =~ ^[A-Za-z0-9]+$ ]]; then
+                red " [错误] 名称不合法，只能包含英文字母和数字。"
+                sleep 1; continue
+            fi
+            if [[ -d "/opt/hy2-vless-install_${new_clone}" ]]; then
+                red " [错误] 分身已存在。"
+                sleep 1; continue
+            fi
+            
+            yellow " 正在提取本体基因，创建平行分身 $new_clone ..."
+            cp -a /opt/hy2-vless-install "/opt/hy2-vless-install_${new_clone}"
+            apply_clone_transform "$new_clone" "/opt/hy2-vless-install_${new_clone}"
+            
+            cat > "/usr/bin/666_${new_clone}" <<EOF_WRAPPER
+#!/usr/bin/env bash
+cd "/opt/hy2-vless-install_${new_clone}" || exit 1
+exec bash "/opt/hy2-vless-install_${new_clone}/install.sh" "\\$@"
+EOF_WRAPPER
+            chmod +x "/usr/bin/666_${new_clone}"
+            green " [✔] 分身 $new_clone 创建成功！已完全物理隔离！"
+            yellow " [提示] 您可以使用 666_${new_clone} 直接启动分身面板。"
+            sleep 3
+        elif [[ "$ic_choice" == "d" || "$ic_choice" == "D" ]]; then
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入要删除的分身名称: ${PLAIN}"
+            read del_clone
+            if [[ -d "/opt/hy2-vless-install_${del_clone}" ]]; then
+                yellow " 正在彻底粉碎分身 $del_clone ..."
+                systemctl stop "sing-box_${del_clone}" >/dev/null 2>&1 || rc-service "sing-box_${del_clone}" stop >/dev/null 2>&1 || true
+                systemctl disable "sing-box_${del_clone}" >/dev/null 2>&1 || rc-update del "sing-box_${del_clone}" default >/dev/null 2>&1 || true
+                rm -f "/etc/systemd/system/sing-box_${del_clone}.service" "/etc/init.d/sing-box_${del_clone}" 2>/dev/null
+                systemctl daemon-reload >/dev/null 2>&1 || true
+                
+                rm -rf "/opt/hy2-vless-install_${del_clone}" "/etc/sing-box_${del_clone}" "/var/www/sing-box_${del_clone}" "/var/lib/sing-box_${del_clone}"
+                rm -f "/usr/bin/666_${del_clone}"
+                rm -f "/etc/nginx/conf.d/sing-box-sub_${del_clone}.conf" "/etc/nginx/sites-enabled/sing-box-sub_${del_clone}.conf" "/etc/nginx/sites-available/sing-box-sub_${del_clone}.conf" "/etc/nginx/http.d/sing-box-sub_${del_clone}.conf"
+                
+                systemctl restart nginx 2>/dev/null || rc-service nginx restart 2>/dev/null || true
+                green " [✔] 分身 $del_clone 及其所有配置已被物理抹除。"
+            else
+                red " [错误] 未找到该分身。"
+            fi
+            sleep 2
+        elif [[ "$ic_choice" =~ ^[0-9]+$ ]]; then
+            if [[ "$ic_choice" -eq 0 ]]; then
+                if [[ -n "$HY2_CLONE_NAME" ]]; then
+                    yellow " 正在跃迁至 本体 (Main) 面板..."
+                    sleep 1; exec bash /opt/hy2-vless-install/install.sh
+                else
+                    red " 当前已在本体面板。"; sleep 1
+                fi
+            else
+                local idx=$((ic_choice - 1))
+                if [[ $idx -lt 0 || $idx -ge ${#clones[@]} ]]; then
+                    red " [错误] 无效的编号。"; sleep 1; continue
+                fi
+                local target_clone="${clones[$idx]}"
+                if [[ "$HY2_CLONE_NAME" == "$target_clone" ]]; then
+                    red " 当前已在分身 $target_clone 面板。"; sleep 1; continue
+                fi
+                yellow " 正在跃迁至 分身 ($target_clone) 面板..."
+                sleep 1; exec bash "/opt/hy2-vless-install_${target_clone}/install.sh"
+            fi
+        else
+            red " 输入无效"; sleep 1
+        fi
+    done
+}
