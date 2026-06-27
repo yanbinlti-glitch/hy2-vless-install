@@ -1128,8 +1128,9 @@ modify_hy2_self_signed_cert() {
     
     openssl ecparam -genkey -name prime256v1 -out "$key_path" 2>/dev/null
     openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$new_sni" 2>/dev/null
-    chmod 644 "$cert_path"
-    chmod 600 "$key_path"
+    chmod 644 "$cert_path" 2>/dev/null || true
+    chmod 640 "$key_path" 2>/dev/null || true
+    chown root:sing-box "$cert_path" "$key_path" 2>/dev/null || true
 
     local backup="/etc/sing-box/config.json.bak.hy2-cert.$(date +%F-%H%M%S)"
     cp -a /etc/sing-box/config.json "$backup"
@@ -1194,8 +1195,9 @@ modify_tuic_self_signed_cert() {
     
     openssl ecparam -genkey -name prime256v1 -out "$key_path" 2>/dev/null
     openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$new_sni" 2>/dev/null
-    chmod 644 "$cert_path"
-    chmod 600 "$key_path"
+    chmod 644 "$cert_path" 2>/dev/null || true
+    chmod 640 "$key_path" 2>/dev/null || true
+    chown root:sing-box "$cert_path" "$key_path" 2>/dev/null || true
 
     local backup="/etc/sing-box/config.json.bak.tuic-cert.$(date +%F-%H%M%S)"
     cp -a /etc/sing-box/config.json "$backup"
