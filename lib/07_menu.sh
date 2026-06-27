@@ -496,115 +496,9 @@ main_realtime_status_panel() {
     printf "%b
 " " ${LIGHT_CYAN}实时状态面板${PLAIN}"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    printf "%b
-" " ${LIGHT_YELLOW}Sing-box状态:${PLAIN} ${svc_text}    ${LIGHT_YELLOW}核心版本:${PLAIN} ${sb_ver}    ${LIGHT_YELLOW}最新官方版:${PLAIN} ${sb_latest}"
-    printf "%b
-" " ${LIGHT_YELLOW}系统:${PLAIN} ${os_name}    ${LIGHT_YELLOW}内核:${PLAIN} ${kernel} "   
-    printf "%b
-" " ${LIGHT_YELLOW}BBR算法:${PLAIN} ${bbr}     ${LIGHT_YELLOW}架构:${PLAIN} ${arch}    ${LIGHT_YELLOW}虚拟化:${PLAIN} ${virt}"
-    printf "%b
-" " ${LIGHT_YELLOW}本机IPv4:${PLAIN} ${ipv4}"
-    printf "%b
-" " ${LIGHT_YELLOW}本机IPv6:${PLAIN} ${ipv6}"    
-    printf "%b
-" " ${LIGHT_YELLOW}WARP接口:${PLAIN} ${warp_iface}"
-
-    # 直连 IP 终极高压补位系统
-    local disp_v4="${clean_ipv4}"
-    if [[ -z "$disp_v4" || "$disp_v4" == "检测超时"* ]]; then
-        disp_v4=$(curl --fail --silent --show-error --location --ipv4 --proto '=https' --tlsv1.2 --max-time 4 --retry 2 --connect-timeout 3 https://api.ipify.org 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $NF; exit}')
-        [[ -z "$disp_v4" ]] && disp_v4="未知本机IP"
-    fi
-
-    # 落地 IP 双轨重装渲染逻辑
-    if [[ "$out_mode" == "指定节点" ]]; then
-        if [[ "$target_inbound" == "hy2-in" ]]; then
-            printf "%b
-" " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
-            printf "%b
-" " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
-        elif [[ "$target_inbound" == "vless-in" ]]; then
-            printf "%b
-" " ${LIGHT_GREEN}▶ Hy2 落地IP :${PLAIN} ${LIGHT_CYAN}[本机直连] ${disp_v4}${PLAIN}"
-            printf "%b
-" " ${LIGHT_GREEN}▶ VLESS 落地 :${PLAIN} ${LIGHT_PURPLE}${landing_info} (定向中转)${PLAIN}"
-        fi
-    else
-        local suffix=""
-        [[ "$out_mode" == "全局中转" ]] && suffix=" (全局强转)"
-        [[ "$out_mode" == "智能分流" ]] && suffix=" (流媒体智能分流)"
-        
-        if [[ "$out_mode" == "未开启" ]]; then
-            printf "%b
-" " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_CYAN}${landing_info}${PLAIN}"
-        else
-            printf "%b
-" " ${LIGHT_YELLOW}落地网络:${PLAIN} ${LIGHT_PURPLE}${landing_info}${suffix}${PLAIN}"
-        fi
-    fi
-    # --- 租期看门狗倒计时高精渲染引擎 ---
-    local exp_time=$(cat /etc/sing-box/expiration${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "0")
-    if [[ "$exp_time" -gt 0 ]]; then
-        local now_ts=$(date +%s)
-        if [[ "$now_ts" -ge "$exp_time" ]]; then
-            printf "%b
-" " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_RED}已过期 (后台看门狗已强行断网停用)${PLAIN}"
-            if is_svc_active sing-box${HY2_INSTANCE_SUFFIX}; then
-                rc-service sing-box${HY2_INSTANCE_SUFFIX} stop >/dev/null 2>&1 || systemctl stop sing-box${HY2_INSTANCE_SUFFIX} >/dev/null 2>&1
-            fi
-        else
-            local diff_ts=$((exp_time - now_ts))
-            local r_days=$((diff_ts / 86400))
-            local r_hours=$(( (diff_ts % 86400) / 3600 ))
-            local r_mins=$(( (diff_ts % 3600) / 60 ))
-            printf "%b
-" " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}剩余 ${r_days} 天 ${r_hours} 小时 ${r_mins} 分钟 (到期自动断网)${PLAIN}"
-        fi
-    else
-        printf "%b
-" " ${LIGHT_YELLOW}▶ 节点有效期:${PLAIN} ${LIGHT_GREEN}永久有效 (未设置时间限制)${PLAIN}"
-    fi
-
-    red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    main_status_show_node_info
-    echo ""
-}
-
-menu() {
-  local status_ui="${LIGHT_RED}● 未运行 / 异常${PLAIN}"
-  local version_ui="${HY2_VLESS_VERSION:-dev}"
-
-  is_svc_active sing-box${HY2_INSTANCE_SUFFIX} && status_ui="${LIGHT_GREEN}● 运行中 (Active)${PLAIN}"
-
-  clear
-
-  green "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-  printf "%b
-" "${LIGHT_GREEN}  ██████╗  ██╗   ██╗ ██████╗  ██╗       █████╗ ${PLAIN}"
-  printf "%b
-" "${LIGHT_GREEN}  ██╔══██╗ ██║   ██║ ██╔═══██╗██║      ██╔══██╗${PLAIN}"
-  printf "%b
-" "${LIGHT_GREEN}  ██║  ██║ ██║   ██║ ██║   ██║██║      ███████║${PLAIN}"
-  printf "%b
-" "${LIGHT_GREEN}  ██║  ██║ ██║   ██║ ██║   ██║██║      ██╔══██║${PLAIN}"
-  printf "%b
-" "${LIGHT_GREEN}  ██████╔╝ ╚██████╔╝ ╚██████╔╝███████╗ ██║  ██║${PLAIN}"
-  printf "%b
-" "${LIGHT_GREEN}  ╚═════╝   ╚══════╝  ╚═════╝ ╚══════╝ ╚═╝  ╚═╝  ${LIGHT_YELLOW}[当前状态: ${status_ui}${LIGHT_YELLOW}]${PLAIN}"
-  green "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-   printf "%b
-" " ${LIGHT_YELLOW}当前版本 ：v${version_ui}${PLAIN}"
-  printf "%b
-" " ${LIGHT_GREEN}项目名称 ：Sing-box (Hy2 / VLESS) 一键部署与管理脚本 (Nginx订阅加强版)${PLAIN}"
-  printf "%b
-" " ${LIGHT_PURPLE}项目地址 ：哆啦的Github库 https://github.com/yanbinlti-glitch${PLAIN}"
-  green "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-  main_realtime_status_panel
-    yellow " 脚本快捷方式：666 (已自动配置，下次可在终端直接输入 666 启动)"
-  red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
   printf "%b
-" " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}安装部署 节点核心 (Hysteria 2 / VLESS)${PLAIN}"
+" " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}安装部署 节点核心 (Hysteria 2 / VLESS / TUIC)${PLAIN}"
   printf "%b
 " " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_RED}节点安全卸载与清理管控${PLAIN}"
   echo "----------------------------------------------------------------------------------"
@@ -620,7 +514,6 @@ menu() {
   printf "%b
 " " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
   printf "%b
-  printf "%b
 " " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
   printf "%b
 " " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
@@ -628,7 +521,7 @@ menu() {
 " " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
   printf "%b
-" " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
+" " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出面板${PLAIN}"
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
   echo ""
   printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-10]: ${PLAIN}"
