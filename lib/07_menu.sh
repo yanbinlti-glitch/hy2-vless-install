@@ -174,18 +174,19 @@ main_status_detect_virtualization() {
 }
 
 main_status_show_node_info() {
-    local hy2_port hy2_sni hy2_hop vless_port vless_sni vless_flow
+    local hy2_port hy2_sni hy2_hop vless_port vless_sni vless_flow tuic_port tuic_sni
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]] || ! command -v jq >/dev/null 2>&1; then
+    if [[ ! -f /etc/sing-box/config.json ]] || ! command -v jq >/dev/null 2>&1; then
         yellow " 节点安装信息: 未检测到配置文件"
         return 0
     fi
 
-    hy2_port=$(jq -r '.inbounds[]? | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-    vless_port=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .listen_port // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    hy2_port=$(jq -r '.inbounds[]? | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
+    vless_port=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
+    tuic_port=$(jq -r '.inbounds[]? | select(.tag=="tuic-in") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
 
-    if [[ -z "$hy2_port" && -z "$vless_port" ]]; then
-        yellow " 节点安装信息: 未检测到 Hy2 / VLESS 入站"
+    if [[ -z "$hy2_port" && -z "$vless_port" && -z "$tuic_port" ]]; then
+        yellow " 节点安装信息: 未检测到任何节点入站 (Hy2 / VLESS / TUIC)"
         return 0
     fi
 
@@ -193,27 +194,24 @@ main_status_show_node_info() {
 " " ${LIGHT_CYAN}Sing-box 节点安装信息:${PLAIN}"
 
     if [[ -n "$vless_port" && "$vless_port" != "null" ]]; then
-        vless_sni=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        vless_flow=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .users[0].flow // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        vless_sni=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config.json 2>/dev/null)
+        vless_flow=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .users[0].flow // empty' /etc/sing-box/config.json 2>/dev/null)
         [[ -z "$vless_sni" || "$vless_sni" == "null" ]] && vless_sni="未读取"
         [[ -z "$vless_flow" || "$vless_flow" == "null" ]] && vless_flow="xtls-rprx-vision"
-
         printf "%b
 " " ${LIGHT_GREEN} ✔ [ VLESS-Reality ]${PLAIN} 端口:${LIGHT_YELLOW}${vless_port}${PLAIN}  Reality域名:${LIGHT_YELLOW}${vless_sni}${PLAIN}  flow:${LIGHT_YELLOW}${vless_flow}${PLAIN}"
     fi
 
-        if [[ -n "$hy2_port" && "$hy2_port" != "null" ]]; then
-        hy2_sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "未读取")
-        hy2_hop=$(cat /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
+    if [[ -n "$hy2_port" && "$hy2_port" != "null" ]]; then
+        hy2_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
+        hy2_hop=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
         [[ -z "$hy2_hop" ]] && hy2_hop="未开启"
-
         printf "%b
 " " ${LIGHT_GREEN} ✔ [ Hysteria-2   ]${PLAIN} 端口:${LIGHT_YELLOW}${hy2_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${hy2_sni}${PLAIN}  跳跃端口:${LIGHT_YELLOW}${hy2_hop}${PLAIN}"
     fi
 
-    local tuic_port=$(jq -r '.inbounds[]? | select(.tag=="tuic-in") | .listen_port // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
     if [[ -n "$tuic_port" && "$tuic_port" != "null" ]]; then
-        local tuic_sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "未读取")
+        tuic_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
         printf "%b
 " " ${LIGHT_GREEN} ✔ [ TUIC v5      ]${PLAIN} 端口:${LIGHT_YELLOW}${tuic_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${tuic_sni}${PLAIN}  拥塞控制:${LIGHT_YELLOW}bbr${PLAIN}"
     fi
@@ -600,11 +598,7 @@ menu() {
   main_realtime_status_panel
   yellow " 脚本快捷方式：666 (已自动配置，下次可在终端直接输入 666 启动)"
 
-  local tuic_port=$(jq -r '.inbounds[]? | select(.tag=="tuic-in") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
-  if [[ -n "$tuic_port" && "$tuic_port" != "null" ]]; then
-      local tuic_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
-      printf "%b\n" " ${LIGHT_GREEN} ✔ [ TUIC v5      ]${PLAIN} 端口:${LIGHT_YELLOW}${tuic_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${tuic_sni}${PLAIN}  拥塞控制:${LIGHT_YELLOW}bbr${PLAIN}"
-  fi
+
 
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
