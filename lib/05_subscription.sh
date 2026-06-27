@@ -138,10 +138,15 @@ generate_client_configs() {
         # 通用 hysteria2:// URI 使用主监听端口，避免部分客户端/订阅转换器无法解析端口范围。
         # Clash/Mihomo 与 sing-box 专用订阅仍分别通过 ports / server_ports 保留端口跳跃。
         local hy2_client_port="$bind_port"
-        local sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
+        local sni=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null)
+        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
 
-        local cert_pin=$(openssl x509 -in /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)
-        local spki_pin=$(openssl x509 -in /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
+        local cert_path=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.tls.certificate_path // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null)
+        [[ -z "$cert_path" || "$cert_path" == "null" ]] && cert_path="/etc/sing-box/hy2.crt"
+        [[ ! -f "$cert_path" ]] && cert_path="/etc/sing-box/cert.crt"
+
+        local cert_pin=$(openssl x509 -in "$cert_path" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d :)
+        local spki_pin=$(openssl x509 -in "$cert_path" -noout -pubkey 2>/dev/null | openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 -binary 2>/dev/null | base64)
 
         local yaml_pwd="${pwd//\'/\'\'}"
         local s_pwd=$(jq -nr --arg v "$pwd" '$v|@uri')
