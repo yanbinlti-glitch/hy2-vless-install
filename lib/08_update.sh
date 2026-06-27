@@ -42,10 +42,10 @@ self_update() {
 
     yellow " 正在绕过哈希限制，直接强拉远程模块..."
     download_update_file "$base/VERSION" "$tmp_dir/VERSION" || echo "latest" > "$tmp_dir/VERSION"
-    download_update_file "$base/install.sh" "$tmp_dir/install.sh" || { red " [错误] install.sh 下载失败。"; return 1; }
+    download_update_file "$base/install.sh" "$tmp_dir/install.sh" || { red " [错误] install.sh 下载失败。"; read -p " ▶ 按回车键返回..." temp; return 1; }
 
     for m in "${update_modules[@]}"; do
-        download_update_file "$base/lib/$m" "$tmp_dir/lib/$m" || { red " [错误] 模块下载失败: $m"; return 1; }
+        download_update_file "$base/lib/$m" "$tmp_dir/lib/$m" || { red " [错误] 模块下载失败: $m"; read -p " ▶ 按回车键返回..." temp; return 1; }
     done
 
     install_dir="$INSTALL_DIR"
@@ -59,7 +59,7 @@ self_update() {
     fi
 
     if ! cp -f "$tmp_dir/install.sh" "$install_dir/install.sh" || ! cp -f "$tmp_dir"/lib/*.sh "$install_dir/lib/" || ! cp -f "$tmp_dir/VERSION" "$install_dir/VERSION"; then
-        red " [错误] 覆盖失败，已恢复原版。"; return 1
+        red " [错误] 覆盖失败，已恢复原版。"; read -p " ▶ 按回车键返回..." temp; return 1
     fi
 
     chmod +x "$install_dir/install.sh" "$install_dir"/lib/*.sh 2>/dev/null || true

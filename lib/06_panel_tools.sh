@@ -2367,6 +2367,7 @@ show_warp_ipv6_route() {
 
 
 
+
 instance_manager() {
     while true; do
         clear
@@ -2422,12 +2423,12 @@ instance_manager() {
             cp -a /opt/hy2-vless-install "/opt/hy2-vless-install_${new_clone}"
             apply_clone_transform "$new_clone" "/opt/hy2-vless-install_${new_clone}"
             
-            cat > "/usr/bin/666_${new_clone}" <<EOF_WRAPPER
-#!/usr/bin/env bash
-cd "/opt/hy2-vless-install_${new_clone}" || exit 1
-exec bash "/opt/hy2-vless-install_${new_clone}/install.sh" "\\$@"
-EOF_WRAPPER
+            # 使用最安全的 echo 写入，绝对不触发 Bash 变量膨胀 Bug
+            echo '#!/usr/bin/env bash' > "/usr/bin/666_${new_clone}"
+            echo "cd "/opt/hy2-vless-install_${new_clone}" || exit 1" >> "/usr/bin/666_${new_clone}"
+            echo 'exec bash "/opt/hy2-vless-install_'"${new_clone}"'/install.sh" "$@"' >> "/usr/bin/666_${new_clone}"
             chmod +x "/usr/bin/666_${new_clone}"
+            
             green " [✔] 分身 $new_clone 创建成功！已完全物理隔离！"
             yellow " [提示] 您可以使用 666_${new_clone} 直接启动分身面板。"
             sleep 3

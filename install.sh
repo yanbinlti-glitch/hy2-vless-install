@@ -1,5 +1,68 @@
 #!/usr/bin/env bash
 
+INSTALL_DIR="${HY2_VLESS_INSTALL_DIR:-/opt/hy2-vless-install}"
+HY2_CLONE_NAME=""
+
+apply_clone_transform() {
+    local name="$1"
+    local target="$2"
+    cat << 'EOF_PY_TRANSFORM' > /tmp/hy2_transform.py
+import os, sys
+name = sys.argv[1]
+target = sys.argv[2]
+bs = "sing" + "-box"
+hy = "hy2-vless-install"
+replacements = {
+    f"/etc/{bs}": f"/etc/{bs}_{name}",
+    f"/var/www/{bs}": f"/var/www/{bs}_{name}",
+    f"/var/lib/{bs}": f"/var/lib/{bs}_{name}",
+    f"/var/log/{bs}.log": f"/var/log/{bs}_{name}.log",
+    f"{bs}.service": f"{bs}_{name}.service",
+    f"/etc/init.d/{bs}": f"/etc/init.d/{bs}_{name}",
+    f"/run/{bs}.pid": f"/run/{bs}_{name}.pid",
+    f"{bs}-sub.conf": f"{bs}-sub_{name}.conf",
+    f"svc_start {bs}": f"svc_start {bs}_{name}",
+    f"svc_stop {bs}": f"svc_stop {bs}_{name}",
+    f"svc_restart {bs}": f"svc_restart {bs}_{name}",
+    f"svc_enable {bs}": f"svc_enable {bs}_{name}",
+    f"svc_disable {bs}": f"svc_disable {bs}_{name}",
+    f"is_svc_active {bs}": f"is_svc_active {bs}_{name}",
+    f"journalctl -u {bs}": f"journalctl -u {bs}_{name}",
+    f"tail -n 80 /var/log/{bs}.log": f"tail -n 80 /var/log/{bs}_{name}.log",
+    f"/opt/{hy}": f"/opt/{hy}_{name}",
+    f"/usr/bin/666": f"/usr/bin/666_{name}",
+    f"/tmp/hy2_vless_panel.lock": f"/tmp/hy2_vless_panel_{name}.lock",
+    f"{bs}:{bs}": f"{bs}_{name}:{bs}_{name}",
+    f"groupadd --system {bs}": f"groupadd --system {bs}_{name}",
+    f"id -u {bs}": f"id -u {bs}_{name}",
+    f"User={bs}": f"User={bs}_{name}",
+    f"Group={bs}": f"Group={bs}_{name}",
+    f"chown root:{bs}": f"chown root:{bs}_{name}",
+    f"addgroup -S {bs}": f"addgroup -S {bs}_{name}",
+    f"--gid {bs}": f"--gid {bs}_{name}",
+    f"-G {bs}": f"-G {bs}_{name}",
+    f"^{bs}:": f"^{bs}_{name}:",
+    f"{bs}_log_gc": f"{bs}_{name}_log_gc",
+    f"{bs} || return 1": f"{bs}_{name} || return 1"
+}
+for root, _, files in os.walk(target):
+    for file in files:
+        if file.endswith('.sh') or file == 'VERSION' or file == 'install.sh':
+            filepath = os.path.join(root, file)
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+            for k, v in replacements.items():
+                content = content.replace(k, v)
+            if file == 'install.sh':
+                content = content.replace('HY2_CLONE_NAME=""', f'HY2_CLONE_NAME="{name}"')
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+EOF_PY_TRANSFORM
+    python3 /tmp/hy2_transform.py "$name" "$target"
+    rm -f /tmp/hy2_transform.py
+}
+
+
 # Hy2 + VLESS Reality 一键安装脚本 - 模块化入口
 # 支持两种运行方式：
 # 1) git clone 后在仓库根目录执行：bash install.sh
