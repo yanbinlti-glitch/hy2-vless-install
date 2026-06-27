@@ -620,24 +620,35 @@ menu() {
   printf "%b
 " " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_GREEN}获取 节点配置 与 订阅链接${PLAIN}"
   printf "%b
-" " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_CYAN}检查 / 在线更新脚本${PLAIN}"
   printf "%b
-" " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
+" " ${LIGHT_GREEN}[8]${PLAIN} ${LIGHT_PURPLE}开启 BBR / TCP Fast Open / UDP 加速 (强烈推荐)${PLAIN}"
   printf "%b
-" " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
+" " ${LIGHT_GREEN}[9]${PLAIN} ${LIGHT_YELLOW}一键兼容修复 / 状态诊断 (推荐排障)${PLAIN}"
   printf "%b
-" " ${LIGHT_GREEN}[11]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
+" " ${LIGHT_GREEN}[10]${PLAIN} ${LIGHT_RED}全局卸载脚本 (回归没装脚本的状态)${PLAIN}"
   echo "----------------------------------------------------------------------------------"
   printf "%b
 " " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_RED}退出脚本${PLAIN}"
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
   echo ""
-  printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-11]: ${PLAIN}"
+  printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-10]: ${PLAIN}"
 
   read menuInput || exit 1
 
-  case $menuInput in     0 ) exit 0 ;;     1 ) inst_singbox ;;
-        2 ) remove_node ;;     3 ) singbox_switch ;;     4 ) config_modify_menu ;;     5 ) warp_ipv6_route_menu ;;     6 ) config_outbound ;;     7 ) showconf ;;     8 ) self_update ;;     9 ) enable_bbr ;;     10 ) quick_repair_and_status ;;     11 ) global_uninstall ;;     * ) red " 输入无效"; sleep 1 ;; esac
+  case $menuInput in
+        0 ) exit 0 ;;
+        1 ) inst_singbox ;;
+        2 ) remove_node ;;
+        3 ) singbox_switch ;;
+        4 ) config_modify_menu ;;
+        5 ) warp_ipv6_route_menu ;;
+        6 ) config_outbound ;;
+        7 ) showconf ;;
+        8 ) enable_bbr ;;
+        9 ) quick_repair_and_status ;;
+        10 ) global_uninstall ;;
+        * ) red " 输入无效"; sleep 1 ;;
+    esac
 }
 
 
