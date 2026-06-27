@@ -2380,7 +2380,7 @@ instance_manager() {
         if systemctl is-active --quiet sing-box 2>/dev/null || rc-service sing-box status 2>/dev/null | grep -q 'started'; then
             main_status="${LIGHT_GREEN}运行中${PLAIN}"
         fi
-        printf "%b\n" " [0] 本体 (Main)          | 状态: ${main_status} | 快捷键: 666"
+        printf "%b\n" " [0 ] 本体 (Main)          | 状态: ${main_status} | 快捷键: 666"
         
         local clones=()
         local i=1
@@ -2392,7 +2392,16 @@ instance_manager() {
                 if systemctl is-active --quiet "sing-box_${cname}" 2>/dev/null || rc-service "sing-box_${cname}" status 2>/dev/null | grep -q 'started'; then
                     cstatus="${LIGHT_GREEN}运行中${PLAIN}"
                 fi
-                printf "%b\n" " [$i] 分身 ($cname) | 状态: ${cstatus} | 快捷键: 666_${cname}"
+                # 动态计算缺失的视觉宽度
+                local pad_len=$(( 14 - ${#cname} ))
+                [[ $pad_len -lt 1 ]] && pad_len=1
+                local pad_spaces=$(printf '%*s' "$pad_len" "")
+                
+                # 为双位数编号 (如 10) 预留对齐位
+                local idx_str="$i"
+                [[ ${#idx_str} -eq 1 ]] && idx_str="$i "
+                
+                printf "%b\\n" " [$idx_str] 分身 ($cname)${pad_spaces}| 状态: ${cstatus} | 快捷键: 666_${cname}"
                 ((i++))
             fi
         done
