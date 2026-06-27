@@ -1621,7 +1621,8 @@ inst_tuic() {
         return 1
     fi
 
-    jq --arg p "$port" --arg uuid "$t_uuid" --arg pwd "$t_pwd" --arg cp "/etc/sing-box/cert.crt" --arg kp "/etc/sing-box/private.key" --arg listen "$listen_addr" '
+    local tc_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+    jq --arg p "$port" --arg uuid "$t_uuid" --arg pwd "$t_pwd" --arg cp "/etc/sing-box/cert.crt" --arg kp "/etc/sing-box/private.key" --arg listen "$listen_addr" --arg sni "$tc_sni" '
     .inbounds += [{
       "type": "tuic",
       "tag": "tuic-in",
