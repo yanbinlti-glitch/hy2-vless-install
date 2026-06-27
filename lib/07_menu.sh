@@ -203,7 +203,7 @@ main_status_show_node_info() {
     fi
 
     if [[ -n "$hy2_port" && "$hy2_port" != "null" ]]; then
-        hy2_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
+        hy2_sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
         hy2_hop=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
         [[ -z "$hy2_hop" ]] && hy2_hop="未开启"
         printf "%b
@@ -211,7 +211,7 @@ main_status_show_node_info() {
     fi
 
     if [[ -n "$tuic_port" && "$tuic_port" != "null" ]]; then
-        tuic_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
+        tuic_sni=$(cat /etc/sing-box/tuic_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
         printf "%b
 " " ${LIGHT_GREEN} ✔ [ TUIC v5      ]${PLAIN} 端口:${LIGHT_YELLOW}${tuic_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${tuic_sni}${PLAIN}  拥塞控制:${LIGHT_YELLOW}bbr${PLAIN}"
     fi

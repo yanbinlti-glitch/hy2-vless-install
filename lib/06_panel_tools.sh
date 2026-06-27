@@ -1095,61 +1095,7 @@ modify_vless_self_signed_cert() {
 }
 
 
-modify_shared_self_signed_cert() {
-    clear
-    print_line
-    green " 修改 Hy2 / TUIC v5 自签名证书 (SNI) "
-    print_line
-    echo ""
 
-    check_installed_nodes
-    if [[ $has_hy2 -eq 0 && $has_tuic -eq 0 ]]; then
-        red " 未检测到 Hysteria 2 或 TUIC v5 节点，请先安装节点。"
-        sleep 2
-        return
-    fi
-
-    local cert_bak key_bak sni_bak
-    cert_bak="/tmp/hy2-cert.crt.bak.$(date +%s)"
-    key_bak="/tmp/hy2-private.key.bak.$(date +%s)"
-    sni_bak="/tmp/hy2-cert_sni.txt.bak.$(date +%s)"
-
-    [[ -f /etc/sing-box/cert.crt ]] && cp -a /etc/sing-box/cert.crt "$cert_bak"
-    [[ -f /etc/sing-box/private.key ]] && cp -a /etc/sing-box/private.key "$key_bak"
-    [[ -f /etc/sing-box/cert_sni.txt ]] && cp -a /etc/sing-box/cert_sni.txt "$sni_bak"
-
-    yellow " 当前自签证书域名 (SNI): $(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo unknown)"
-    echo ""
-    yellow " 将重新生成 /etc/sing-box/cert.crt 与 private.key"
-    echo ""
-
-    inst_cert || {
-        red " [错误] 自签名证书生成失败。"
-        sleep 2
-        return
-    }
-
-    if ! restart_singbox_checked; then
-        red " [错误] 新证书应用失败，正在回滚旧证书。"
-        [[ -f "$cert_bak" ]] && mv -f "$cert_bak" /etc/sing-box/cert.crt
-        [[ -f "$key_bak" ]] && mv -f "$key_bak" /etc/sing-box/private.key
-        [[ -f "$sni_bak" ]] && mv -f "$sni_bak" /etc/sing-box/cert_sni.txt
-        restart_singbox_checked || true
-        sleep 2
-        return
-    fi
-
-    generate_client_configs
-    
-    echo ""
-    green " [✔] 证书 (SNI) 已更新！订阅文件已同步刷新！"
-    red " [⚠️ 极其重要] 您的节点特征已经改变，旧的配置已经全部失效！"
-    red " [⚠️ 极其重要] 请务必前往您的客户端 (v2rayN / Clash / Sing-box 等) 【重新更新订阅】！"
-    
-    echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
-    read temp
-}
 
 modify_tuic_self_signed_cert() {
     check_env
@@ -1750,39 +1696,167 @@ set_node_expiration() {
     read temp
 }
 
-config_modify_menu() {
+modify_hy2_self_signed_cert() {
     clear
     print_line
-    green " 查看 / 修改 配置文件 "
+    green " 修改 Hysteria 2 自签名证书 (SNI) "
     print_line
-    printf "%b\n" \
-" " \
-" ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_CYAN}修改配置文件${PLAIN}" \
-" ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 节点的自签名证书 / Reality 参数${PLAIN}" \
-" ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hy2 的自签名证书${PLAIN}" \
-" ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_YELLOW}修改 TUIC v5 的自签名证书 / SNI${PLAIN}" \
-" ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hy2 的跳跃端口${PLAIN}" \
-" ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}" \
-" ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_RED}配置节点定时停用限时 (到期自动断网)${PLAIN}" \
-" ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}" \
-" "
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-7]: ${PLAIN}"
-    read config_modify_choice || return
+    echo ""
 
-    case "$config_modify_choice" in
-        1) edit_config ;;
-        2) modify_vless_self_signed_cert ;;
-        3) modify_shared_self_signed_cert ;;
-        4) modify_tuic_self_signed_cert ;;
-        5) enable_hy2_port_hopping ;;
-        6) modify_node_name ;;
-        7) set_node_expiration ;;
-        0) return ;;
-        *)
-            red " 无效选项，请重新选择。"
-            sleep 1
-            ;;
-    esac
+    check_installed_nodes
+    if [[ $has_hy2 -eq 0 ]]; then
+        red " 未检测到 Hysteria 2 节点，请先安装 Hy2。"
+        sleep 2
+        return
+    fi
+
+    local current_sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+    yellow " 当前 Hy2 证书域名 (SNI): $current_sni"
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的 Hy2 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
+    read new_sni || return
+    [[ -z "$new_sni" ]] && new_sni="$current_sni"
+
+    if [[ ! "$new_sni" =~ ^[A-Za-z0-9.-]+$ ]]; then
+        red " [错误] 域名格式不合法。"
+        sleep 2
+        return
+    fi
+
+    yellow " 正在生成 Hy2 专属自签证书..."
+    local cert_path="/etc/sing-box/hy2.crt"
+    local key_path="/etc/sing-box/hy2.key"
+    
+    openssl ecparam -genkey -name prime256v1 -out "$key_path" 2>/dev/null
+    openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$new_sni" 2>/dev/null
+    chmod 644 "$cert_path"
+    chmod 600 "$key_path"
+
+    local backup="/etc/sing-box/config.json.bak.hy2-cert.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box/config.json "$backup"
+
+    if ! jq --arg sni "$new_sni" --arg cp "$cert_path" --arg kp "$key_path" '
+        (.inbounds[] | select(.tag=="hy2-in") | .tls.server_name) = $sni |
+        (.inbounds[] | select(.tag=="hy2-in") | .tls.certificate_path) = $cp |
+        (.inbounds[] | select(.tag=="hy2-in") | .tls.key_path) = $kp
+    ' /etc/sing-box/config.json > /tmp/sb_hy2_cert.json; then
+        red " [错误] jq 修改失败。"
+        mv -f "$backup" /etc/sing-box/config.json
+        sleep 2
+        return
+    fi
+
+    mv -f /tmp/sb_hy2_cert.json /etc/sing-box/config.json
+
+    if apply_singbox_config_with_rollback "$backup"; then
+        printf "%s\n" "$new_sni" > /etc/sing-box/hy2_sni.txt
+        green " [✔] Hy2 证书 (SNI) 已更新为物理隔离的专属证书！"
+        red " [⚠️ 极其重要] 节点特征已改变，请务必前往客户端【重新更新订阅】！"
+    else
+        red " [错误] Hy2 证书修改失败，配置已回滚。"
+    fi
+
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    read temp
+}
+
+modify_tuic_self_signed_cert() {
+    clear
+    print_line
+    green " 修改 TUIC v5 自签名证书 (SNI) "
+    print_line
+    echo ""
+
+    check_installed_nodes
+    if [[ $has_tuic -eq 0 ]]; then
+        red " 未检测到 TUIC v5 节点，请先安装 TUIC。"
+        sleep 2
+        return
+    fi
+
+    local current_sni=$(cat /etc/sing-box/tuic_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+    yellow " 当前 TUIC 证书域名 (SNI): $current_sni"
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的 TUIC 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
+    read new_sni || return
+    [[ -z "$new_sni" ]] && new_sni="$current_sni"
+
+    if [[ ! "$new_sni" =~ ^[A-Za-z0-9.-]+$ ]]; then
+        red " [错误] 域名格式不合法。"
+        sleep 2
+        return
+    fi
+
+    yellow " 正在生成 TUIC 专属自签证书..."
+    local cert_path="/etc/sing-box/tuic.crt"
+    local key_path="/etc/sing-box/tuic.key"
+    
+    openssl ecparam -genkey -name prime256v1 -out "$key_path" 2>/dev/null
+    openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$new_sni" 2>/dev/null
+    chmod 644 "$cert_path"
+    chmod 600 "$key_path"
+
+    local backup="/etc/sing-box/config.json.bak.tuic-cert.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box/config.json "$backup"
+
+    if ! jq --arg sni "$new_sni" --arg cp "$cert_path" --arg kp "$key_path" '
+        (.inbounds[] | select(.tag=="tuic-in") | .tls.server_name) = $sni |
+        (.inbounds[] | select(.tag=="tuic-in") | .tls.certificate_path) = $cp |
+        (.inbounds[] | select(.tag=="tuic-in") | .tls.key_path) = $kp
+    ' /etc/sing-box/config.json > /tmp/sb_tuic_cert.json; then
+        red " [错误] jq 修改失败。"
+        mv -f "$backup" /etc/sing-box/config.json
+        sleep 2
+        return
+    fi
+
+    mv -f /tmp/sb_tuic_cert.json /etc/sing-box/config.json
+
+    if apply_singbox_config_with_rollback "$backup"; then
+        printf "%s\n" "$new_sni" > /etc/sing-box/tuic_sni.txt
+        green " [✔] TUIC v5 证书 (SNI) 已更新为物理隔离的专属证书！"
+        red " [⚠️ 极其重要] 节点特征已改变，请务必前往客户端【重新更新订阅】！"
+    else
+        red " [错误] TUIC 证书修改失败，配置已回滚。"
+    fi
+
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
+    read temp
+}
+\nconfig_modify_menu() {
+    while true; do
+        clear
+        print_line
+        green " 查看 / 修改 配置文件 "
+        print_line
+        echo ""
+        printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}修改配置文件 (原生 JSON)${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 的自签证书 / Reality 参数${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hysteria 2 的自签证书 (SNI)${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_YELLOW}修改 TUIC v5 的自签证书 (SNI)${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hysteria 2 跳跃端口${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_PURPLE}配置节点定时停用限时 (到期自动断网)${PLAIN}"
+        echo ""
+        printf "%b\n" " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
+        echo ""
+        printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-7]: ${PLAIN}"
+        read config_modify_choice || return
+
+        case "$config_modify_choice" in
+            1) edit_config ;;
+            2) modify_vless_self_signed_cert ;;
+            3) modify_hy2_self_signed_cert ;;
+            4) modify_tuic_self_signed_cert ;;
+            5) enable_hy2_port_hopping ;;
+            6) modify_node_name ;;
+            7) set_node_expiration ;;
+            0) return ;;
+            *) red " 输入无效"; sleep 1 ;;
+        esac
+    done
 }
 
 
