@@ -27,7 +27,7 @@ generate_client_configs() {
     realip
     check_installed_nodes
     
-    if [[ $has_hy2 -eq 0 && $has_vless -eq 0 ]]; then
+    if [[ $has_hy2 -eq 0 && $has_vless -eq 0 && $has_tuic -eq 0 ]]; then
         return
     fi
 
@@ -394,6 +394,59 @@ generate_client_configs() {
     fi
 
 
+
+    # ================= 聚合: TUIC =================
+    if [[ $has_tuic -eq 1 ]]; then
+        local node_name=$(cat /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "TUIC_Node")
+        local yaml_node_name="${node_name//\'/\'\'}"
+        local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
+        local bind_port uuid pwd sni
+
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
+        uuid=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || uuid=""
+        pwd=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
+        sni=$(jq -r '[.inbounds[]? | select(.tag=="tuic-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
+        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
+
+        if [[ -n "$bind_port" && -n "$uuid" && -n "$pwd" ]]; then
+            local s_uuid="$(_uri_encode "$uuid")"
+            local s_pwd="$(_uri_encode "$pwd")"
+            local s_sni="$(_uri_encode "$sni")"
+            
+            local url="tuic://${s_uuid}:${s_pwd}@$(get_link_ip):${bind_port}/?sni=${s_sni}&alpn=h3&congestion_control=bbr#${safe_node_name}"
+            url_all="${url_all}${url}\n"
+
+            proxy_yaml="${proxy_yaml}\n  - name: '${yaml_node_name}'\n    type: tuic\n    server: \"$yaml_json_ip\"\n    port: $bind_port\n    uuid: \"$uuid\"\n    password: \"$pwd\"\n    sni: \"$sni\"\n    alpn: [h3]\n    skip-cert-verify: true\n    reduce-rtt: true\n    udp-relay-mode: native"
+            proxy_names="${proxy_names}\n      - '${yaml_node_name}'"
+
+            local sb_tuic_json=$(jq -cn \
+                --arg tag "$node_name" \
+                --arg server "$yaml_json_ip" \
+                --arg port "$bind_port" \
+                --arg uuid "$uuid" \
+                --arg password "$pwd" \
+                --arg sni "$sni" \
+                '{
+                    type: "tuic",
+                    tag: $tag,
+                    server: $server,
+                    server_port: ($port | tonumber),
+                    uuid: $uuid,
+                    password: $password,
+                    congestion_control: "bbr",
+                    tls: {
+                        enabled: true,
+                        server_name: $sni,
+                        insecure: true,
+                        alpn: ["h3"]
+                    }
+                }')
+
+            sb_outbounds=$(jq -cn --argjson current "$sb_outbounds" --argjson item "$sb_tuic_json" '$current + [$item]')
+            sb_tags=$(jq -cn --argjson current "$sb_tags" --arg tag "$node_name" '$current + [$tag]')
+        fi
+    fi
+    
     # 修复 Bug 3：正确输出文本流
   printf "%s" "$url_all" > "$web_dir/$sub_uuid/url.txt"
     printf "%s" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%s" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
@@ -653,6 +706,7 @@ clean_env() {
     fi
     close_port_by_tag "hy2-in"
     close_port_by_tag "vless-in"
+    close_port_by_tag "tuic-in"
     close_port_by_tag "sub"
 
     svc_stop sing-box${HY2_INSTANCE_SUFFIX}

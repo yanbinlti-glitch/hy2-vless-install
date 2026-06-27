@@ -18,7 +18,7 @@ ensure_foundation
 remove_node() {
     check_installed_nodes
 
-    if [[ ${has_hy2:-0} -eq 0 && ${has_vless:-0} -eq 0 ]]; then
+    if [[ ${has_hy2:-0} -eq 0 && ${has_vless:-0} -eq 0 && ${has_tuic:-0} -eq 0 ]]; then
         red " 未检测到任何已部署的节点！"
         sleep 2
         return
@@ -32,16 +32,18 @@ remove_node() {
     yellow " 检测到当前系统已部署以下节点："
     [[ ${has_hy2:-0} -eq 1 ]] && green " ▶ Hysteria 2 : 运行中"
     [[ ${has_vless:-0} -eq 1 ]] && green " ▶ VLESS : 运行中"
+    [[ ${has_tuic:-0} -eq 1 ]] && green " ▶ TUIC v5 : 运行中"
     echo ""
     yellow " 请选择需要执行的卸载操作："
     echo ""
-    [[ ${has_hy2:-0} -eq 1 ]] && echo -e " ${LIGHT_GREEN}[1]${PLAIN} 仅卸载 Hysteria 2 节点 (保留 VLESS 配置)"
-    [[ ${has_vless:-0} -eq 1 ]] && echo -e " ${LIGHT_GREEN}[2]${PLAIN} 仅卸载 VLESS 节点 (保留 Hysteria 2 配置)"
-    echo -e " ${LIGHT_GREEN}[3]${PLAIN} 卸载全部节点与订阅服务 (清空所有入站，保留 Sing-box 核心)"
+    [[ ${has_hy2:-0} -eq 1 ]] && echo -e " ${LIGHT_GREEN}[1]${PLAIN} 仅卸载 Hysteria 2 节点"
+    [[ ${has_vless:-0} -eq 1 ]] && echo -e " ${LIGHT_GREEN}[2]${PLAIN} 仅卸载 VLESS 节点"
+    [[ ${has_tuic:-0} -eq 1 ]] && echo -e " ${LIGHT_GREEN}[3]${PLAIN} 仅卸载 TUIC v5 节点"
+    echo -e " ${LIGHT_GREEN}[4]${PLAIN} 卸载全部节点与订阅服务 (保留 Sing-box 核心)"
     echo ""
     echo -e " ${LIGHT_GREEN}[0]${PLAIN} 返回主菜单"
     echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-3]: ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-4]: ${PLAIN}"
     read rm_choice || return
 
     _remove_single_node_safe() {
@@ -135,6 +137,9 @@ remove_node() {
         elif [[ "$tag" == "vless-in" ]]; then
             close_port_by_tag "vless-in" || true
             rm -f /etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/reality_pub${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/reality_priv${HY2_INSTANCE_SUFFIX}.txt
+        elif [[ "$tag" == "tuic-in" ]]; then
+            close_port_by_tag "tuic-in" || true
+            rm -f /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt
         fi
 
         generate_client_configs || yellow " [提示] 节点已卸载，但订阅刷新失败；请稍后进入菜单 [6] 查看订阅时自动刷新。"
@@ -158,10 +163,10 @@ remove_node() {
     case "$rm_choice" in
         1)
             [[ ${has_hy2:-0} -eq 0 ]] && return
-            if [[ ${has_vless:-0} -eq 0 ]]; then
+            if [[ ${has_vless:-0} -eq 0 && ${has_tuic:-0} -eq 0 ]]; then
                 yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
                 clean_env "keep_core"
-                green " [✔] Hysteria 2 节点及关联服务已成功卸载！(核心已保留)"
+                green " [✔] Hysteria 2 节点已卸载！(核心保留)"
             else
                 _remove_single_node_safe "hy2-in" "Hysteria 2" || return 1
             fi
@@ -169,18 +174,29 @@ remove_node() {
             ;;
         2)
             [[ ${has_vless:-0} -eq 0 ]] && return
-            if [[ ${has_hy2:-0} -eq 0 ]]; then
+            if [[ ${has_hy2:-0} -eq 0 && ${has_tuic:-0} -eq 0 ]]; then
                 yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
                 clean_env "keep_core"
-                green " [✔] VLESS 节点及关联服务已成功卸载！(核心已保留)"
+                green " [✔] VLESS 节点已卸载！(核心保留)"
             else
                 _remove_single_node_safe "vless-in" "VLESS" || return 1
             fi
             _restart_panel_after_node_change
             ;;
         3)
+            [[ ${has_tuic:-0} -eq 0 ]] && return
+            if [[ ${has_hy2:-0} -eq 0 && ${has_vless:-0} -eq 0 ]]; then
+                yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
+                clean_env "keep_core"
+                green " [✔] TUIC v5 节点已卸载！(核心保留)"
+            else
+                _remove_single_node_safe "tuic-in" "TUIC v5" || return 1
+            fi
+            _restart_panel_after_node_change
+            ;;
+        4)
             clean_env "keep_core"
-            green " [✔] 所有节点配置、订阅及防火墙规则已被彻底清理！(核心已保留)"
+            green " [✔] 所有节点与订阅规则彻底清理完毕！"
             _restart_panel_after_node_change
             ;;
         0)

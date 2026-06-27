@@ -1519,24 +1519,84 @@ echo ""
     sleep 2
 }
 
+inst_tuic() {
+    local is_first=1
+    [[ -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]] && is_first=0
+
+    if [[ $is_first -eq 1 ]]; then
+        inst_cert
+        inst_sub_port
+        setup_singbox_service
+        build_base_json
+    fi
+    
+    echo ""
+    print_line
+    yellow "  TUIC v5 端口与网络配置"
+    read_free_port " ${LIGHT_YELLOW} ▶ 设置 TUIC 主端口 (UDP) [10000-65535] (回车随机): ${PLAIN}" "random" 10000 65535 "udp" "TUIC 主端口" || return 1
+    port="$READ_PORT_RESULT"
+    green " 节点主端口已设置为: $port (UDP)"
+    open_port "$port" "udp" "tuic-in"
+    echo ""
+    
+    yellow "  正在生成 TUIC 核心凭证..."
+    local t_uuid=$(/usr/local/bin/sing-box generate uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr 'A-Z' 'a-z' || echo "11223344-5566-7788-9900-aabbccddeeff")
+    local t_pwd=$(gen_random_str 16)
+    local t_sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
+    
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 TUIC_Node]: ${PLAIN}"
+    read custom_node_name || exit 1
+    [[ -z $custom_node_name ]] && custom_node_name="TUIC_Node"
+    echo "$custom_node_name" > /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt
+    
+    local listen_addr="::"
+    [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
+
+    if ! _begin_singbox_config_transaction; then
+        red " [错误] 无法创建配置事务备份。"
+        return 1
+    fi
+
+    jq --arg p "$port" --arg uuid "$t_uuid" --arg pwd "$t_pwd" --arg cp "/etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt" --arg kp "/etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key" --arg listen "$listen_addr" '
+    .inbounds += [{
+      "type": "tuic",
+      "tag": "tuic-in",
+      "listen": $listen,
+      "listen_port": ($p | tonumber),
+      "users": [{"uuid": $uuid, "password": $pwd}],
+      "congestion_control": "bbr",
+      "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
+    }]' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json || {
+        _abort_singbox_config_update "生成新 Sing-box 配置失败"
+        return 1
+    }
+    
+    _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+    if ! svc_enable sing-box${HY2_INSTANCE_SUFFIX}; then
+        _abort_singbox_config_update "无法启用 Sing-box 服务"
+        return 1
+    fi
+    restart_singbox_checked || return 1
+    generate_client_configs
+    
+    echo ""
+    green "  [✔] TUIC v5 服务端已追加部署成功！"
+    sleep 2
+}
+
 inst_singbox() {
     check_env
     normalize_singbox_config
     check_installed_nodes
     
-    if [[ $has_hy2 -eq 1 && $has_vless -eq 1 ]]; then
+    if [[ $has_hy2 -eq 1 && $has_vless -eq 1 && $has_tuic -eq 1 ]]; then
         echo ""
-        red "  [阻断] 您已成功部署了双节点 (Hysteria 2 + VLESS)，无需重复安装！"
+        red "  [阻断] 您已成功部署了所有支持的节点类型，无需重复安装！"
         sleep 2; return
     fi
     
-    if [[ $has_hy2 -eq 1 ]]; then
-        yellow "  检测到您已安装 Hysteria 2，正在为您直接拉起 VLESS 补充安装流程..."
-        sleep 2; inst_vless_reality; return
-    elif [[ $has_vless -eq 1 ]]; then
-        yellow "  检测到您已安装 VLESS，正在为您直接拉起 Hysteria 2 补充安装流程..."
-        sleep 2; inst_hysteria2; return
-    fi
+    
     
     clear
     echo ""
