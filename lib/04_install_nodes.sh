@@ -1396,7 +1396,7 @@ echo ""
       "listen": $listen,
       "listen_port": ($p | tonumber),
       "users": [{"password": $pwd}],
-      "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
+      "tls": { "enabled": true, "server_name": $sni, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
     }]' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json || {
     _abort_singbox_config_update "生成新 Sing-box 配置失败"
     return 1
@@ -1547,7 +1547,7 @@ inst_tuic() {
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 TUIC_Node]: ${PLAIN}"
     read custom_node_name || exit 1
-    [[ -z $custom_node_name ]] && custom_node_name="TUIC_Node"
+    [[ -z "$custom_node_name" || "$custom_node_name" == "-1" || "$custom_node_name" == "null" || "$custom_node_name" == "NULL" ]] && custom_node_name="TUIC_Node"
     echo "$custom_node_name" > /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt
     
     local listen_addr="::"
@@ -1558,7 +1558,7 @@ inst_tuic() {
         return 1
     fi
 
-    jq --arg p "$port" --arg uuid "$t_uuid" --arg pwd "$t_pwd" --arg cp "/etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt" --arg kp "/etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key" --arg listen "$listen_addr" '
+    jq --arg p "$port" --arg uuid "$t_uuid" --arg pwd "$t_pwd" --arg sni "$t_sni" --arg cp "/etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt" --arg kp "/etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key" --arg listen "$listen_addr" '
     .inbounds += [{
       "type": "tuic",
       "tag": "tuic-in",
@@ -1566,7 +1566,7 @@ inst_tuic() {
       "listen_port": ($p | tonumber),
       "users": [{"uuid": $uuid, "password": $pwd}],
       "congestion_control": "bbr",
-      "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
+      "tls": { "enabled": true, "server_name": $sni, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
     }]' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" && [ -s "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" ] && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_config.$$.json" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json || {
         _abort_singbox_config_update "生成新 Sing-box 配置失败"
         return 1

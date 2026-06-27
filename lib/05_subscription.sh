@@ -398,6 +398,7 @@ generate_client_configs() {
     # ================= 聚合: TUIC =================
     if [[ $has_tuic -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "TUIC_Node")
+        [[ -z "$node_name" || "$node_name" == "-1" || "$node_name" == "null" || "$node_name" == "NULL" ]] && node_name="TUIC_Node"
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port uuid pwd sni
@@ -406,6 +407,7 @@ generate_client_configs() {
         uuid=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || uuid=""
         pwd=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
         sni=$(jq -r '[.inbounds[]? | select(.tag=="tuic-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
+        [[ -z "$sni" || "$sni" == "-1" || "$sni" == "null" || "$sni" == "NULL" ]] && sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
         [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
 
         if [[ -n "$bind_port" && -n "$uuid" && -n "$pwd" ]]; then
