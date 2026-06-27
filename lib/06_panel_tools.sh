@@ -1651,45 +1651,40 @@ set_node_expiration() {
 }
 
 config_modify_menu() {
-    while true; do
-        clear
-        print_line
-        green " 查看 / 修改 配置文件 "
-        print_line
-        echo ""
-        printf "%b
-" " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}修改配置文件${PLAIN}"
-        printf "%b
-" " ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 节点的自签名证书 / Reality 参数${PLAIN}"
-        printf "%b
-" " ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hy2 的自签名证书${PLAIN}"
-        printf "%b
-" " ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hy2 的跳跃端口${PLAIN}"
-        printf "%b
-" " ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}"
-                printf "%b
-" " ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_PURPLE}配置节点定时停用限时 (到期自动断网)${PLAIN}"
+    clear
+    print_line
+    green " 查看 / 修改 配置文件 "
+    print_line
+    printf "%b\n" \
+" " \
+" ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_CYAN}修改配置文件${PLAIN}" \
+" ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_YELLOW}修改 VLESS 节点的自签名证书 / Reality 参数${PLAIN}" \
+" ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_YELLOW}修改 Hy2 的自签名证书${PLAIN}" \
+" ${LIGHT_GREEN}[4]${PLAIN} ${LIGHT_YELLOW}修改 TUIC v5 的自签名证书 / SNI${PLAIN}" \
+" ${LIGHT_GREEN}[5]${PLAIN} ${LIGHT_CYAN}开启 / 修改 Hy2 的跳跃端口${PLAIN}" \
+" ${LIGHT_GREEN}[6]${PLAIN} ${LIGHT_BLUE}修改客户端节点名称 (展示名)${PLAIN}" \
+" ${LIGHT_GREEN}[7]${PLAIN} ${LIGHT_RED}配置节点定时停用限时 (到期自动断网)${PLAIN}" \
+" ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}" \
+" "
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-7]: ${PLAIN}"
+    read config_modify_choice || return
 
-        printf "%b
-" " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
-        echo ""
-        printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
-        printf "%b\n" " ${LIGHT_GREEN}[T]${PLAIN} ${LIGHT_YELLOW}修改 TUIC v5 的自签名证书 / SNI${PLAIN}"
-        read config_modify_choice || return
-
-        case "$config_modify_choice" in
-            1) edit_config ;;
-            2) modify_vless_self_signed_cert ;;
-            3) modify_hy2_self_signed_cert ;;
-            t|T) modify_tuic_self_signed_cert ;;
-            4) enable_hy2_port_hopping ;;
-            5) modify_node_name ;;
-            6) set_node_expiration ;;
-            0) return ;;
-            *) red " 输入无效"; sleep 1 ;;
-        esac
-    done
+    case "$config_modify_choice" in
+        1) edit_config ;;
+        2) modify_vless_self_signed_cert ;;
+        3) modify_hy2_self_signed_cert ;;
+        4) modify_tuic_self_signed_cert ;;
+        5) enable_hy2_port_hopping ;;
+        6) modify_node_name ;;
+        7) set_node_expiration ;;
+        0) return ;;
+        *)
+            red " 无效选项，请重新选择。"
+            sleep 1
+            ;;
+    esac
 }
+
 
 detect_public_ipv6_addr() {
     # 直接向内核路由表索要前往公共全球单播地址的真实源出口 IP (完美兼容标准 iproute2 与 BusyBox)
