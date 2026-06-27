@@ -1095,16 +1095,16 @@ modify_vless_self_signed_cert() {
 }
 
 
-modify_hy2_self_signed_cert() {
+modify_shared_self_signed_cert() {
     clear
     print_line
-    green " 修改 Hysteria 2 自签名证书 "
+    green " 修改 Hy2 / TUIC v5 自签名证书 (SNI) "
     print_line
     echo ""
 
     check_installed_nodes
-    if [[ $has_hy2 -eq 0 ]]; then
-        red " 未检测到 Hysteria 2 节点，请先安装 Hy2。"
+    if [[ $has_hy2 -eq 0 && $has_tuic -eq 0 ]]; then
+        red " 未检测到 Hysteria 2 或 TUIC v5 节点，请先安装节点。"
         sleep 2
         return
     fi
@@ -1114,13 +1114,13 @@ modify_hy2_self_signed_cert() {
     key_bak="/tmp/hy2-private.key.bak.$(date +%s)"
     sni_bak="/tmp/hy2-cert_sni.txt.bak.$(date +%s)"
 
-    [[ -f /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt ]] && cp -a /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt "$cert_bak"
-    [[ -f /etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key ]] && cp -a /etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key "$key_bak"
-    [[ -f /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt ]] && cp -a /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt "$sni_bak"
+    [[ -f /etc/sing-box/cert.crt ]] && cp -a /etc/sing-box/cert.crt "$cert_bak"
+    [[ -f /etc/sing-box/private.key ]] && cp -a /etc/sing-box/private.key "$key_bak"
+    [[ -f /etc/sing-box/cert_sni.txt ]] && cp -a /etc/sing-box/cert_sni.txt "$sni_bak"
 
-    yellow " 当前 Hy2 证书域名: $(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo unknown)"
+    yellow " 当前自签证书域名 (SNI): $(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo unknown)"
     echo ""
-    yellow " 将重新生成 /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt 与 /etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key"
+    yellow " 将重新生成 /etc/sing-box/cert.crt 与 private.key"
     echo ""
 
     inst_cert || {
@@ -1131,17 +1131,21 @@ modify_hy2_self_signed_cert() {
 
     if ! restart_singbox_checked; then
         red " [错误] 新证书应用失败，正在回滚旧证书。"
-        [[ -f "$cert_bak" ]] && mv -f "$cert_bak" /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt
-        [[ -f "$key_bak" ]] && mv -f "$key_bak" /etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key
-        [[ -f "$sni_bak" ]] && mv -f "$sni_bak" /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt
+        [[ -f "$cert_bak" ]] && mv -f "$cert_bak" /etc/sing-box/cert.crt
+        [[ -f "$key_bak" ]] && mv -f "$key_bak" /etc/sing-box/private.key
+        [[ -f "$sni_bak" ]] && mv -f "$sni_bak" /etc/sing-box/cert_sni.txt
         restart_singbox_checked || true
         sleep 2
         return
     fi
 
     generate_client_configs
-    green " [✔] Hy2 自签名证书已更新，订阅已刷新。"
-
+    
+    echo ""
+    green " [✔] 证书 (SNI) 已更新！订阅文件已同步刷新！"
+    red " [⚠️ 极其重要] 您的节点特征已经改变，旧的配置已经全部失效！"
+    red " [⚠️ 极其重要] 请务必前往您的客户端 (v2rayN / Clash / Sing-box 等) 【重新更新订阅】！"
+    
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回配置修改菜单...${PLAIN}"
     read temp
@@ -1768,7 +1772,7 @@ config_modify_menu() {
     case "$config_modify_choice" in
         1) edit_config ;;
         2) modify_vless_self_signed_cert ;;
-        3) modify_hy2_self_signed_cert ;;
+        3) modify_shared_self_signed_cert ;;
         4) modify_tuic_self_signed_cert ;;
         5) enable_hy2_port_hopping ;;
         6) modify_node_name ;;
