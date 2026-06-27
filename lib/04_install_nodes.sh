@@ -1389,7 +1389,7 @@ echo ""
     return 1
   fi
 
-    jq --arg p "$port" --arg pwd "$auth_pwd" --arg cp "/etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt" --arg kp "/etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key" --arg listen "$listen_addr" '
+    jq --arg p "$port" --arg pwd "$auth_pwd" --arg cp "/etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt" --arg kp "/etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key" --arg listen "$listen_addr" --arg sni "$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/tuic_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo www.bing.com)" '
     .inbounds += [{
       "type": "hysteria2",
       "tag": "hy2-in",
