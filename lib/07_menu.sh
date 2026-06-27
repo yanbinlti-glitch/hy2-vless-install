@@ -606,8 +606,6 @@ menu() {
   [[ -n "$HY2_CLONE_NAME" ]] && current_shortcut="666_${HY2_CLONE_NAME}"
   yellow " 脚本快捷方式：$current_shortcut (下次可在终端直接输入 $current_shortcut 启动)"
 
-  main_status_show_node_info
-
   red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
   printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_CYAN}安装前置系统依赖与 Sing-box 核心 (首次部署必点)${PLAIN}"
