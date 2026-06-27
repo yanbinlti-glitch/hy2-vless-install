@@ -1150,6 +1150,119 @@ modify_hy2_self_signed_cert() {
     read temp
 }
 
+modify_tuic_self_signed_cert() {
+    check_env
+    check_installed_nodes
+
+    if [[ ${has_tuic:-0} -eq 0 ]]; then
+        red " [错误] 当前未检测到 TUIC v5 节点，无法修改 TUIC 自签名证书。"
+        sleep 2
+        return 1
+    fi
+
+    local config="/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json"
+    local cert_file="/etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt"
+    local key_file="/etc/sing-box/private${HY2_INSTANCE_SUFFIX}.key"
+    local sni_file="/etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt"
+    local name_file="/etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt"
+
+    if [[ ! -f "$config" ]]; then
+        red " [错误] 未找到 Sing-box 配置文件：$config"
+        sleep 2
+        return 1
+    fi
+
+    if ! jq -e '.inbounds[]? | select(.tag=="tuic-in")' "$config" >/dev/null 2>&1; then
+        red " [错误] 当前配置中未找到 tuic-in 入站。"
+        sleep 2
+        return 1
+    fi
+
+    clear
+    print_line
+    green " 修改 TUIC v5 自签名证书 / SNI "
+    print_line
+    yellow " 说明：当前 Hy2 与 TUIC 共用 /etc/sing-box/cert${HY2_INSTANCE_SUFFIX}.crt 与 private${HY2_INSTANCE_SUFFIX}.key。"
+    yellow " 本功能会复用 Hy2 自签证书生成流程，然后同步补写 tuic-in.tls.server_name。"
+    echo ""
+
+    modify_hy2_self_signed_cert || return 1
+
+    local new_sni=""
+    new_sni="$(cat "$sni_file" 2>/dev/null || echo "www.bing.com")"
+    new_sni="${new_sni//$'\r'/}"
+    new_sni="${new_sni//$'\n'/}"
+    new_sni="${new_sni//\\r/}"
+    new_sni="${new_sni//\\n/}"
+    new_sni="$(printf "%s" "$new_sni" | tr -d '[:space:]')"
+
+    if [[ -z "$new_sni" || "$new_sni" == "-1" || "$new_sni" == "null" || "$new_sni" == "NULL" ]]; then
+        new_sni="www.bing.com"
+        printf "%s\n" "$new_sni" > "${sni_file}.tmp" && mv -f "${sni_file}.tmp" "$sni_file"
+        chmod 600 "$sni_file" 2>/dev/null || true
+    fi
+
+    local clean_name=""
+    clean_name="$(cat "$name_file" 2>/dev/null || echo "TUIC_Node")"
+    clean_name="${clean_name//$'\r'/}"
+    clean_name="${clean_name//$'\n'/}"
+    clean_name="${clean_name//\\r/}"
+    clean_name="${clean_name//\\n/}"
+    [[ -z "$clean_name" || "$clean_name" == "-1" || "$clean_name" == "null" || "$clean_name" == "NULL" ]] && clean_name="TUIC_Node"
+    printf "%s\n" "$clean_name" > "${name_file}.tmp" && mv -f "${name_file}.tmp" "$name_file"
+    chmod 600 "$name_file" 2>/dev/null || true
+
+    local backup="/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.tuic-cert.$(date +%F-%H%M%S)"
+    cp -a "$config" "$backup"
+
+    if ! jq --arg sni "$new_sni" --arg cp "$cert_file" --arg kp "$key_file" '
+        (.inbounds[]? | select(.tag=="tuic-in") | .tls) |=
+        ((. // {}) + {
+            enabled: true,
+            server_name: $sni,
+            alpn: ["h3"],
+            certificate_path: $cp,
+            key_path: $kp
+        })
+    ' "$config" > /tmp/sb_tuic_cert.json; then
+        red " [错误] 写入 TUIC TLS 配置失败，正在回滚。"
+        mv -f "$backup" "$config"
+        rm -f /tmp/sb_tuic_cert.json
+        sleep 2
+        return 1
+    fi
+
+    mv -f /tmp/sb_tuic_cert.json "$config"
+    chmod 600 "$config" 2>/dev/null || true
+
+    if command -v /usr/local/bin/sing-box >/dev/null 2>&1; then
+        if ! /usr/local/bin/sing-box check -c "$config" >/tmp/tuic-cert-check.log 2>&1; then
+            red " [错误] Sing-box 配置校验失败，正在回滚。"
+            cat /tmp/tuic-cert-check.log 2>/dev/null || true
+            mv -f "$backup" "$config"
+            sleep 2
+            return 1
+        fi
+    fi
+
+    if declare -F svc_restart >/dev/null 2>&1; then
+        svc_restart "sing-box${HY2_INSTANCE_SUFFIX}" || {
+            red " [错误] Sing-box 重启失败。"
+            sleep 2
+            return 1
+        }
+    else
+        systemctl restart "sing-box${HY2_INSTANCE_SUFFIX}" 2>/dev/null || rc-service "sing-box${HY2_INSTANCE_SUFFIX}" restart 2>/dev/null || true
+    fi
+
+    generate_client_configs || true
+
+    green " [✔] TUIC v5 自签名证书 / SNI 已同步更新：$new_sni"
+    green " [✔] 订阅已刷新，v2rayN 重新更新订阅即可生效。"
+    sleep 2
+}
+
+
 hy2_hop_colon_range() {
     echo "$1" | sed 's/-/:/'
 }
@@ -1561,12 +1674,14 @@ config_modify_menu() {
 " " ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
         echo ""
         printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
+        printf "%b\n" " ${LIGHT_GREEN}[T]${PLAIN} ${LIGHT_YELLOW}修改 TUIC v5 的自签名证书 / SNI${PLAIN}"
         read config_modify_choice || return
 
         case "$config_modify_choice" in
             1) edit_config ;;
             2) modify_vless_self_signed_cert ;;
             3) modify_hy2_self_signed_cert ;;
+            t|T) modify_tuic_self_signed_cert ;;
             4) enable_hy2_port_hopping ;;
             5) modify_node_name ;;
             6) set_node_expiration ;;
