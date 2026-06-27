@@ -202,13 +202,20 @@ main_status_show_node_info() {
 " " ${LIGHT_GREEN} ✔ [ VLESS-Reality ]${PLAIN} 端口:${LIGHT_YELLOW}${vless_port}${PLAIN}  Reality域名:${LIGHT_YELLOW}${vless_sni}${PLAIN}  flow:${LIGHT_YELLOW}${vless_flow}${PLAIN}"
     fi
 
-    if [[ -n "$hy2_port" && "$hy2_port" != "null" ]]; then
+        if [[ -n "$hy2_port" && "$hy2_port" != "null" ]]; then
         hy2_sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "未读取")
         hy2_hop=$(cat /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
         [[ -z "$hy2_hop" ]] && hy2_hop="未开启"
 
         printf "%b
 " " ${LIGHT_GREEN} ✔ [ Hysteria-2   ]${PLAIN} 端口:${LIGHT_YELLOW}${hy2_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${hy2_sni}${PLAIN}  跳跃端口:${LIGHT_YELLOW}${hy2_hop}${PLAIN}"
+    fi
+
+    local tuic_port=$(jq -r '.inbounds[]? | select(.tag=="tuic-in") | .listen_port // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    if [[ -n "$tuic_port" && "$tuic_port" != "null" ]]; then
+        local tuic_sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "未读取")
+        printf "%b
+" " ${LIGHT_GREEN} ✔ [ TUIC v5      ]${PLAIN} 端口:${LIGHT_YELLOW}${tuic_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${tuic_sni}${PLAIN}  拥塞控制:${LIGHT_YELLOW}bbr${PLAIN}"
     fi
 }
 
