@@ -570,6 +570,13 @@ main_realtime_status_panel() {
     echo ""
 }
 
+run_check_env() {
+    check_env
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 前置依赖与核心安装完成，按回车键返回主菜单...${PLAIN}"
+    read temp
+}
+
 menu() {
   local status_ui="${LIGHT_RED}● 未运行 / 异常${PLAIN}"
   local version_ui="${HY2_VLESS_VERSION:-dev}"

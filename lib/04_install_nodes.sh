@@ -1532,7 +1532,7 @@ inst_tuic() {
     
     echo ""
     print_line
-    yellow "  TUIC v5 端口与网络配置"
+    yellow "  正在部署 TUIC v5 极速轻量协议..."
     read_free_port " ${LIGHT_YELLOW} ▶ 设置 TUIC 主端口 (UDP) [10000-65535] (回车随机): ${PLAIN}" "random" 10000 65535 "udp" "TUIC 主端口" || return 1
     port="$READ_PORT_RESULT"
     green " 节点主端口已设置为: $port (UDP)"
@@ -1586,44 +1586,45 @@ inst_tuic() {
 }
 
 inst_singbox() {
-    check_env
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        echo ""
+        red "  [阻断] 未检测到 Sing-box 核心！请先在主菜单执行 [1] 安装前置系统依赖与核心。"
+        sleep 2; return
+    fi
+
     normalize_singbox_config
     check_installed_nodes
-    
+
     if [[ $has_hy2 -eq 1 && $has_vless -eq 1 && $has_tuic -eq 1 ]]; then
         echo ""
         red "  [阻断] 您已成功部署了所有支持的节点类型，无需重复安装！"
         sleep 2; return
     fi
-    
-    
-    
+
     clear
     echo ""
     green " ──────────────────────────────────────────────────────────"
     green "                 底层代理协议选择配置                      "
-    printf "%b\n" \
-" " \
-"    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}" \
-" " \
-"    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}" \
-" " \
-"    ${LIGHT_CYAN}[3]${PLAIN} ${LIGHT_BLUE}TUIC v5${PLAIN} ${LIGHT_CYAN}(基于 UDP/QUIC，低延迟，移动网络友好)${PLAIN}" \
-" "
+    green " ──────────────────────────────────────────────────────────"
+    echo ""
+    yellow "  请选择要部署的节点协议："
+    echo ""
+    [[ $has_hy2 -eq 0 ]] && printf "%b
+" "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}"
+    [[ $has_vless -eq 0 ]] && printf "%b
+" "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}"
+    [[ $has_tuic -eq 0 ]] && printf "%b
+" "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_CYAN}TUIC v5 (基于 UDP/QUIC，极速轻量化协议)${PLAIN}"
+    echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
     read protoInput || protoInput=1
     [[ -z "$protoInput" ]] && protoInput=1
 
     case "$protoInput" in
-        2)
-            inst_vless_reality
-            ;;
-        3)
-            inst_tuic
-            ;;
-        *)
-            inst_hysteria2
-            ;;
+        1) [[ $has_hy2 -eq 0 ]] && inst_hysteria2 || { red " 已安装该节点"; sleep 1; } ;;
+        2) [[ $has_vless -eq 0 ]] && inst_vless_reality || { red " 已安装该节点"; sleep 1; } ;;
+        3) [[ $has_tuic -eq 0 ]] && inst_tuic || { red " 已安装该节点"; sleep 1; } ;;
+        *) red " 输入无效"; sleep 1 ;;
     esac
 }
 

@@ -166,7 +166,7 @@ remove_node() {
             if [[ ${has_vless:-0} -eq 0 && ${has_tuic:-0} -eq 0 ]]; then
                 yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
                 clean_env "keep_core"
-                green " [✔] Hysteria 2 节点已卸载！(核心保留)"
+                green " [✔] Hysteria 2 节点已成功卸载！(核心已保留)"
             else
                 _remove_single_node_safe "hy2-in" "Hysteria 2" || return 1
             fi
@@ -177,7 +177,7 @@ remove_node() {
             if [[ ${has_hy2:-0} -eq 0 && ${has_tuic:-0} -eq 0 ]]; then
                 yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
                 clean_env "keep_core"
-                green " [✔] VLESS 节点已卸载！(核心保留)"
+                green " [✔] VLESS 节点已成功卸载！(核心已保留)"
             else
                 _remove_single_node_safe "vless-in" "VLESS" || return 1
             fi
@@ -188,7 +188,7 @@ remove_node() {
             if [[ ${has_hy2:-0} -eq 0 && ${has_vless:-0} -eq 0 ]]; then
                 yellow " [提示] 侦测到您正在卸载仅存的最后一个节点，将自动转为全量网络环境清理..."
                 clean_env "keep_core"
-                green " [✔] TUIC v5 节点已卸载！(核心保留)"
+                green " [✔] TUIC v5 节点已成功卸载！(核心已保留)"
             else
                 _remove_single_node_safe "tuic-in" "TUIC v5" || return 1
             fi
@@ -196,17 +196,14 @@ remove_node() {
             ;;
         4)
             clean_env "keep_core"
-            green " [✔] 所有节点与订阅规则彻底清理完毕！"
+            green " [✔] 所有节点配置、订阅及防火墙规则已被彻底清理！(核心已保留)"
             _restart_panel_after_node_change
             ;;
         0)
             return
             ;;
         *)
-            red " 输入无效"
-            sleep 1
-            return
-            ;;
+            red " 输入无效"; sleep 1; return ;;
     esac
 }
 
@@ -1629,30 +1626,31 @@ modify_node_name() {
     fi
 
     local target_node="0"
-    if [[ $has_hy2 -eq 1 && $has_vless -eq 1 ]]; then
-        yellow " 检测到您同时部署了 Hy2 和 VLESS，请选择要修改的节点："
-        printf "%b
+    yellow " 请选择要修改名称的节点："
+    [[ $has_hy2 -eq 1 ]] && printf "%b
 " "   ${LIGHT_GREEN}[1]${PLAIN} Hysteria 2"
-        printf "%b
+    [[ $has_vless -eq 1 ]] && printf "%b
 " "   ${LIGHT_GREEN}[2]${PLAIN} VLESS"
-        printf "%b" " ${LIGHT_YELLOW} ▶ 请选择 [1-2]: ${PLAIN}"
-        read target_node
-        [[ "$target_node" != "1" && "$target_node" != "2" ]] && { red " 输入无效"; sleep 1; return; }
-    elif [[ $has_hy2 -eq 1 ]]; then
-        target_node="1"
-    else
-        target_node="2"
-    fi
-
+    [[ $has_tuic -eq 1 ]] && printf "%b
+" "   ${LIGHT_GREEN}[3]${PLAIN} TUIC v5"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请选择: ${PLAIN}"
+    read target_node
+    
     local current_name new_name file_path protocol
-    if [[ "$target_node" == "1" ]]; then
-        file_path="/etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt"
+    if [[ "$target_node" == "1" && $has_hy2 -eq 1 ]]; then
+        file_path="/etc/sing-box/hy2_name.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "Hy2_Node")
         protocol="Hysteria 2"
-    else
-        file_path="/etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt"
+    elif [[ "$target_node" == "2" && $has_vless -eq 1 ]]; then
+        file_path="/etc/sing-box/vless_name.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "Vless_Node")
         protocol="VLESS"
+    elif [[ "$target_node" == "3" && $has_tuic -eq 1 ]]; then
+        file_path="/etc/sing-box/tuic_name.txt"
+        current_name=$(cat "$file_path" 2>/dev/null || echo "TUIC_Node")
+        protocol="TUIC v5"
+    else
+        red " 输入无效或对应节点未安装"; sleep 1; return
     fi
 
     yellow " 当前 $protocol 节点名称: $current_name"
