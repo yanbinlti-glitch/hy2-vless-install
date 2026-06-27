@@ -165,72 +165,10 @@ download_text() {
 }
 
 resolve_bootstrap_base() {
-  local api=""
-  local response=""
-  local commit_sha=""
-
-  if [[ -n "${HY2_VLESS_RAW_BASE:-}" ]]; then
-    if [[ "${HY2_VLESS_ALLOW_CUSTOM_SOURCE:-0}" != "1" ]]
-    then
-      echo " [错误] 检测到自定义模块下载源，但未明确允许。" >&2
-      echo " [提示] 只有在信任该源时才设置：" >&2
-      echo " HY2_VLESS_ALLOW_CUSTOM_SOURCE=1" >&2
-      return 1
-    fi
-
-    case "$HY2_VLESS_RAW_BASE" in
-      https://*)
-        REPO_RAW_BASE="${HY2_VLESS_RAW_BASE%/}"
-        export REPO_RAW_BASE
-
-        echo " [警告] 当前使用显式允许的自定义下载源。" >&2
-        return 0
-        ;;
-
-      *)
-        echo " [错误] 自定义下载源必须使用 HTTPS。" >&2
-        return 1
-        ;;
-    esac
-  fi
-
-  api="$(
-    printf \
-      'https://api.github.com/repos/%s/%s/commits/%s' \
-      "$REPO_OWNER" \
-      "$REPO_NAME" \
-      "$REPO_BRANCH"
-  )"
-
-  response="$(download_text "$api")" || {
-    echo " [错误] 无法获取 GitHub 分支提交信息。" >&2
-    return 1
-  }
-
-  commit_sha="$(
-    printf '%s\n' "$response" |
-      grep -m1 -E \
-        '"sha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' |
-      sed -E \
-        's/.*"sha"[[:space:]]*:[[:space:]]*"([0-9a-f]{40})".*/\1/'
-  )"
-
-  if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
-    echo " [错误] GitHub API 未返回有效的提交 SHA。" >&2
-    return 1
-  fi
-
-  REPO_RAW_BASE="$(
-    printf \
-      'https://raw.githubusercontent.com/%s/%s/%s' \
-      "$REPO_OWNER" \
-      "$REPO_NAME" \
-      "$commit_sha"
-  )"
-
+  REPO_RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}"
   export REPO_RAW_BASE
-
-  echo " [安全] 本次引导已锁定不可变提交：$commit_sha"
+  echo " [安全] 已彻底关闭 API 限制与哈希锁定，启用极速直连源：$REPO_RAW_BASE"
+  return 0
 }
 
 verify_bootstrap_checksums() {

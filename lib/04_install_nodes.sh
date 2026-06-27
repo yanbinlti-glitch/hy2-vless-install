@@ -1585,6 +1585,66 @@ inst_tuic() {
     sleep 2
 }
 
+inst_tuic() {
+    local is_first=1
+    [[ -f /etc/sing-box/config.json ]] && is_first=0
+    if [[ $is_first -eq 1 ]]; then
+        inst_cert
+        inst_sub_port
+        setup_singbox_service
+        build_base_json
+    fi
+    
+    echo ""
+    print_line
+    yellow "  TUIC v5 极速协议网络配置"
+    read_free_port " ${LIGHT_YELLOW} ▶ 设置 TUIC 主端口 (UDP) [10000-65535] (回车随机): ${PLAIN}" "random" 10000 65535 "udp" "TUIC 主端口" || return 1
+    local port="$READ_PORT_RESULT"
+    green " 节点主端口已设置为: $port (UDP)"
+    open_port "$port" "udp" "tuic-in"
+    echo ""
+    
+    local t_uuid=$(/usr/local/bin/sing-box generate uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid | tr 'A-Z' 'a-z')
+    local t_pwd=$(gen_random_str 16)
+    local t_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+    
+    printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 TUIC_Node]: ${PLAIN}"
+    read custom_node_name || exit 1
+    [[ -z $custom_node_name ]] && custom_node_name="TUIC_Node"
+    echo "$custom_node_name" > /etc/sing-box/tuic_name.txt
+    
+    local listen_addr="::"
+    [[ ! -f /proc/net/if_inet6 ]] && listen_addr="0.0.0.0"
+
+    if ! _begin_singbox_config_transaction; then
+        red " [错误] 无法创建配置事务备份。"
+        return 1
+    fi
+
+    jq --arg p "$port" --arg uuid "$t_uuid" --arg pwd "$t_pwd" --arg cp "/etc/sing-box/cert.crt" --arg kp "/etc/sing-box/private.key" --arg listen "$listen_addr" '
+    .inbounds += [{
+      "type": "tuic",
+      "tag": "tuic-in",
+      "listen": $listen,
+      "listen_port": ($p | tonumber),
+      "users": [{"uuid": $uuid, "password": $pwd}],
+      "congestion_control": "bbr",
+      "tls": { "enabled": true, "alpn": ["h3"], "certificate_path": $cp, "key_path": $kp }
+    }]' /etc/sing-box/config.json > "$HY2_CONFIG_TMP_DIR/sb_tuic.json" && mv -f -- "$HY2_CONFIG_TMP_DIR/sb_tuic.json" /etc/sing-box/config.json || {
+        _abort_singbox_config_update "TUIC 配置写入失败"
+        return 1
+    }
+    
+    _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config.json
+    svc_enable sing-box >/dev/null 2>&1 || true
+    restart_singbox_checked || return 1
+    generate_client_configs
+    
+    echo ""
+    green "  [✔] TUIC v5 极速核心部署成功！"
+    sleep 2
+}
+
 inst_singbox() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         echo ""
@@ -1594,13 +1654,13 @@ inst_singbox() {
 
     normalize_singbox_config
     check_installed_nodes
-
+    
     if [[ $has_hy2 -eq 1 && $has_vless -eq 1 && $has_tuic -eq 1 ]]; then
         echo ""
         red "  [阻断] 您已成功部署了所有支持的节点类型，无需重复安装！"
         sleep 2; return
     fi
-
+    
     clear
     echo ""
     green " ──────────────────────────────────────────────────────────"
@@ -1609,12 +1669,9 @@ inst_singbox() {
     echo ""
     yellow "  请选择要部署的节点协议："
     echo ""
-    [[ $has_hy2 -eq 0 ]] && printf "%b
-" "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}"
-    [[ $has_vless -eq 0 ]] && printf "%b
-" "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}"
-    [[ $has_tuic -eq 0 ]] && printf "%b
-" "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_CYAN}TUIC v5 (基于 UDP/QUIC，极速轻量化协议)${PLAIN}"
+    [[ $has_hy2 -eq 0 ]] && printf "%b\n" "    ${LIGHT_GREEN}[1]${PLAIN} ${LIGHT_GREEN}Hysteria 2 (基于 UDP/QUIC，极速抗丢包，默认推荐)${PLAIN}"
+    [[ $has_vless -eq 0 ]] && printf "%b\n" "    ${LIGHT_GREEN}[2]${PLAIN} ${LIGHT_PURPLE}VLESS + Reality (基于 TCP/XTLS，指纹级伪装，抗封锁推荐)${PLAIN}"
+    [[ $has_tuic -eq 0 ]] && printf "%b\n" "    ${LIGHT_GREEN}[3]${PLAIN} ${LIGHT_CYAN}TUIC v5 (基于 UDP/QUIC，极速轻量化协议)${PLAIN}"
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
     read protoInput || protoInput=1
@@ -1624,7 +1681,6 @@ inst_singbox() {
         1) [[ $has_hy2 -eq 0 ]] && inst_hysteria2 || { red " 已安装该节点"; sleep 1; } ;;
         2) [[ $has_vless -eq 0 ]] && inst_vless_reality || { red " 已安装该节点"; sleep 1; } ;;
         3) [[ $has_tuic -eq 0 ]] && inst_tuic || { red " 已安装该节点"; sleep 1; } ;;
-        *) red " 输入无效"; sleep 1 ;;
+        *) inst_hysteria2 ;;
     esac
 }
-
