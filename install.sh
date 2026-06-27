@@ -39,7 +39,7 @@ export HY2_VLESS_VERSION
 
 
 # ==========================================
-# V1.8.3 全局防并发排他锁 (Mutex Lock)
+# V1.8.38 全局防并发排他锁 (Mutex Lock)
 # ==========================================
 exec 9> "/tmp/hy2_vless_panel.lock"
 if ! flock -n 9; then
@@ -302,32 +302,81 @@ verify_bootstrap_checksums() {
   echo " [安全] 首次引导文件 SHA-256 校验全部通过。"
 }
 
+
+validate_required_symbols() {
+ local menu_file="$SCRIPT_DIR/lib/07_menu.sh"
+
+ if [[ ! -s "$menu_file" ]]; then
+ echo " [错误] 菜单模块为空或不存在：$menu_file" >&2
+ return 1
+ fi
+
+ if ! grep -qE '^[[:space:]]*menu[[:space:]]*\(\)[[:space:]]*\{' "$menu_file"; then
+ echo " [错误] 菜单模块未定义 menu()：$menu_file" >&2
+ echo " [诊断] 可能原因：07_menu.sh 是旧版、下载损坏、复制失败，或 /usr/bin/666 指向了旧安装目录。" >&2
+ return 1
+ fi
+
+ return 0
+}
+
+load_modules() {
+ local module=""
+ local module_path=""
+
+ for module in "${MODULES[@]}"; do
+ module_path="$SCRIPT_DIR/lib/$module"
+
+ if [[ ! -s "$module_path" ]]; then
+ echo " [错误] 模块为空或不存在：$module_path" >&2
+ return 1
+ fi
+
+ # shellcheck source=/dev/null
+ if ! source "$module_path"; then
+ echo " [错误] 模块加载失败：$module_path" >&2
+ return 1
+ fi
+ done
+
+ if ! declare -F menu >/dev/null 2>&1; then
+ echo " [错误] 主菜单函数 menu 未加载，已停止进入主循环。" >&2
+ echo " [诊断] SCRIPT_DIR=$SCRIPT_DIR" >&2
+ echo " [诊断] 请检查：ls -l \"$SCRIPT_DIR/lib/07_menu.sh\" && grep -n '^menu[[:space:]]*()' \"$SCRIPT_DIR/lib/07_menu.sh\"" >&2
+ return 1
+ fi
+
+ return 0
+}
+
 validate_local_bundle() {
-  local module=""
+ local module=""
 
-  if [[ ! -f "$SCRIPT_DIR/install.sh" ]]; then
-    echo " [错误] 找不到入口文件：$SCRIPT_DIR/install.sh" >&2
-    return 1
-  fi
+ if [[ ! -s "$SCRIPT_DIR/install.sh" ]]; then
+ echo " [错误] 找不到入口文件或入口文件为空：$SCRIPT_DIR/install.sh" >&2
+ return 1
+ fi
 
-  if ! bash -n "$SCRIPT_DIR/install.sh"; then
-    echo " [错误] install.sh 语法检查失败。" >&2
-    return 1
-  fi
+ if ! bash -n "$SCRIPT_DIR/install.sh"; then
+ echo " [错误] install.sh 语法检查失败。" >&2
+ return 1
+ fi
 
-  for module in "${MODULES[@]}"; do
-    if [[ ! -f "$SCRIPT_DIR/lib/$module" ]]; then
-      echo " [错误] 模块文件缺失：$module" >&2
-      return 1
-    fi
+ for module in "${MODULES[@]}"; do
+ if [[ ! -s "$SCRIPT_DIR/lib/$module" ]]; then
+ echo " [错误] 模块文件缺失或为空：$module" >&2
+ return 1
+ fi
 
-    if ! bash -n "$SCRIPT_DIR/lib/$module"; then
-      echo " [错误] 模块语法检查失败：$module" >&2
-      return 1
-    fi
-  done
+ if ! bash -n "$SCRIPT_DIR/lib/$module"; then
+ echo " [错误] 模块语法检查失败：$module" >&2
+ return 1
+ fi
+ done
 
-  echo " [安全] 入口和全部模块语法检查通过。"
+ validate_required_symbols || return 1
+
+ echo " [安全] 入口和全部模块语法检查通过。"
 }
 
 ensure_modules() {
@@ -337,7 +386,7 @@ ensure_modules() {
   local boot_dir=""
 
   for module in "${MODULES[@]}"; do
-    if [[ ! -f "$SCRIPT_DIR/lib/$module" ]]; then
+    if [[ ! -s "$SCRIPT_DIR/lib/$module" ]]; then
       missing=1
       break
     fi
@@ -453,38 +502,45 @@ ensure_modules() {
 }
 
 install_self_shortcut() {
-  # 模块化后不能再只把单个 install.sh 复制到 /usr/bin/666。
-  # 正确做法：把入口和 lib/ 一起落盘到 /opt，再创建 666 包装器。
-  mkdir -p "$INSTALL_DIR/lib"
+ # 模块化后不能再只把单个 install.sh 复制到 /usr/bin/666。
+ # 正确做法：把入口和 lib/ 一起落盘到 /opt，再创建 666 包装器。
+ mkdir -p "$INSTALL_DIR/lib"
 
-  if [[ "$SCRIPT_DIR" != "$INSTALL_DIR" ]]; then
-    cp -f "$SCRIPT_DIR/install.sh" "$INSTALL_DIR/install.sh" 2>/dev/null || cp -f "$SCRIPT_PATH" "$INSTALL_DIR/install.sh"
-    cp -f "$SCRIPT_DIR"/lib/*.sh "$INSTALL_DIR/lib/"
-    cp -f "$SCRIPT_DIR/$VERSION_FILE" "$INSTALL_DIR/$VERSION_FILE" 2>/dev/null || echo "$HY2_VLESS_VERSION" > "$INSTALL_DIR/$VERSION_FILE"
-cp -f "$SCRIPT_DIR/SHA256SUMS" "$INSTALL_DIR/SHA256SUMS" 2>/dev/null || true
-    chmod +x "$INSTALL_DIR/install.sh"
-    chmod +x "$INSTALL_DIR"/lib/*.sh 2>/dev/null || true
-  fi
+ if [[ "$SCRIPT_DIR" != "$INSTALL_DIR" ]]; then
+ cp -f "$SCRIPT_DIR/install.sh" "$INSTALL_DIR/install.sh" 2>/dev/null || cp -f "$SCRIPT_PATH" "$INSTALL_DIR/install.sh" || return 1
 
-  cat > /usr/bin/666 <<EOF_WRAPPER
+ local module=""
+ for module in "${MODULES[@]}"; do
+ if [[ ! -s "$SCRIPT_DIR/lib/$module" ]]; then
+ echo " [错误] 无法落盘快捷入口：模块缺失或为空：$SCRIPT_DIR/lib/$module" >&2
+ return 1
+ fi
+ cp -f "$SCRIPT_DIR/lib/$module" "$INSTALL_DIR/lib/$module" || return 1
+ done
+
+ cp -f "$SCRIPT_DIR/$VERSION_FILE" "$INSTALL_DIR/$VERSION_FILE" 2>/dev/null || echo "$HY2_VLESS_VERSION" > "$INSTALL_DIR/$VERSION_FILE"
+ cp -f "$SCRIPT_DIR/SHA256SUMS" "$INSTALL_DIR/SHA256SUMS" 2>/dev/null || true
+ chmod +x "$INSTALL_DIR/install.sh"
+ chmod +x "$INSTALL_DIR"/lib/*.sh 2>/dev/null || true
+ fi
+
+ cat > /usr/bin/666 <<EOF_WRAPPER
 #!/usr/bin/env bash
 cd "$INSTALL_DIR" || exit 1
 exec bash "$INSTALL_DIR/install.sh" "\$@"
 EOF_WRAPPER
 
-  chmod +x /usr/bin/666
+ chmod +x /usr/bin/666
 }
 
 ensure_modules || exit 1
+
 validate_local_bundle || exit 1
 
-for module in "${MODULES[@]}"; do
-  # shellcheck source=/dev/null
-  source "$SCRIPT_DIR/lib/$module"
-done
+load_modules || exit 1
 
-install_self_shortcut
+install_self_shortcut || exit 1
 
 while true; do
-  menu
+ menu
 done
