@@ -248,7 +248,7 @@ edit_config() {
     yellow "          脚本将无法自动更新防火墙规则！修改后请务必自行放行新端口。"
     print_line
     printf "%b" " ${LIGHT_YELLOW} ▶ 是否需要修改配置文件？(y/n) [默认: n]: ${PLAIN}"
-    read edit_choice || exit 1
+    read edit_choice || return 1
     if [[ "$edit_choice" == "y" || "$edit_choice" == "Y" ]]; then
         local config_bak
   config_bak="$(mktemp /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.XXXXXX)" || { red " [✘] 无法创建配置备份文件。"; return 1; }
@@ -874,7 +874,7 @@ singbox_switch() {
 " "    ${LIGHT_GREEN}[0]${PLAIN} ${LIGHT_PURPLE}返回主菜单${PLAIN}"
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [0-6]: ${PLAIN}"
-    read switchInput || exit 1
+    read switchInput || return 1
     case $switchInput in
         1 ) restart_singbox_checked && green "  Sing-box 核心已启动/重载！"; sleep 2 ;;
         2 ) svc_stop sing-box${HY2_INSTANCE_SUFFIX}; yellow "  Sing-box 核心已停止！"; sleep 2 ;;

@@ -50,7 +50,7 @@ _prepare_config_tmp_dir() {
 }
 
 _prepare_config_tmp_dir || {
-  return 1 2>/dev/null || exit 1
+  return 1 2>/dev/null || return 1
 }
 
 #  5. 安装交互核心流程
@@ -186,18 +186,18 @@ inst_sub_port(){
     fi
 
     printf "%b" " ${LIGHT_YELLOW} ▶ 设置 Nginx 聚合订阅服务端口 [1024-65535] (回车随机): ${PLAIN}"
-    read sub_port_input || exit 1
+    read sub_port_input || return 1
     [[ -z $sub_port_input ]] && sub_port_input=$(shuf -i 10000-30000 -n 1)
     
     while [[ ! "$sub_port_input" =~ ^[0-9]+$ ]] || [[ "$sub_port_input" -lt 1024 ]] || [[ "$sub_port_input" -gt 65535 ]]; do
         red " [警告] 端口无效！重新设置: "
-        read sub_port_input || exit 1
+        read sub_port_input || return 1
         [[ -z $sub_port_input ]] && sub_port_input=$(shuf -i 10000-30000 -n 1)
     done
     
     while ss -tnl | grep -E -q "(:|^)$sub_port_input( |$)"; do
         red " [警告] 端口 $sub_port_input 已被占用！重新设置: "
-        read sub_port_input || exit 1
+        read sub_port_input || return 1
         [[ -z $sub_port_input ]] && sub_port_input=$(shuf -i 10000-30000 -n 1)
     done
     green " 订阅 HTTP 端口已设置为: $sub_port_input"
@@ -1330,10 +1330,10 @@ inst_hysteria2() {
     [[ -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]] && is_first=0
 
     if [[ $is_first -eq 1 ]]; then
-        inst_cert
-        inst_sub_port
-        setup_singbox_service
-        build_base_json
+        inst_cert || return 1
+        inst_sub_port || return 1
+        setup_singbox_service || return 1
+        build_base_json || return 1
     fi
     
     printf "%s\n" ""
@@ -1345,18 +1345,18 @@ green " 节点主端口已设置为: $port (UDP)"
 open_port "$port" "udp" "hy2-in"
 echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 设置节点连接密码 (回车自动生成): ${PLAIN}"
-    read auth_pwd || exit 1
+    read auth_pwd || return 1
     [[ -z $auth_pwd ]] && auth_pwd=$(gen_random_str 16)
     
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Hy2_Node]: ${PLAIN}"
-    read custom_node_name || exit 1
+    read custom_node_name || return 1
     [[ -z $custom_node_name ]] && custom_node_name="Hy2_Node"
     echo "$custom_node_name" > /etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt
     
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 是否开启防阻断 Salamander 混淆？(y/n) [默认: y]: ${PLAIN}"
-    read enable_obfs || exit 1
+    read enable_obfs || return 1
     [[ -z $enable_obfs ]] && enable_obfs="y"
     local obfs_pwd=""
     if [[ "$enable_obfs" == "y" || "$enable_obfs" == "Y" ]]; then
@@ -1436,10 +1436,10 @@ inst_vless_reality() {
     [[ -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]] && is_first=0
 
     if [[ $is_first -eq 1 ]]; then
-        inst_cert
-        inst_sub_port
-        setup_singbox_service
-        build_base_json
+        inst_cert || return 1
+        inst_sub_port || return 1
+        setup_singbox_service || return 1
+        build_base_json || return 1
     fi
     
     echo ""
@@ -1466,7 +1466,7 @@ echo ""
     
     printf "%s\n" ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 Vless_Reality_Node]: ${PLAIN}"
-    read custom_node_name || exit 1
+    read custom_node_name || return 1
     [[ -z $custom_node_name ]] && custom_node_name="Vless_Reality_Node"
     echo "$custom_node_name" > /etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt
     
@@ -1524,10 +1524,10 @@ inst_tuic() {
     [[ -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]] && is_first=0
 
     if [[ $is_first -eq 1 ]]; then
-        inst_cert
-        inst_sub_port
-        setup_singbox_service
-        build_base_json
+        inst_cert || return 1
+        inst_sub_port || return 1
+        setup_singbox_service || return 1
+        build_base_json || return 1
     fi
     
     echo ""
@@ -1546,7 +1546,7 @@ inst_tuic() {
     
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 TUIC_Node]: ${PLAIN}"
-    read custom_node_name || exit 1
+    read custom_node_name || return 1
     [[ -z "$custom_node_name" || "$custom_node_name" == "-1" || "$custom_node_name" == "null" || "$custom_node_name" == "NULL" ]] && custom_node_name="TUIC_Node"
     echo "$custom_node_name" > /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt
     
@@ -1589,10 +1589,10 @@ inst_tuic() {
     local is_first=1
     [[ -f /etc/sing-box/config.json ]] && is_first=0
     if [[ $is_first -eq 1 ]]; then
-        inst_cert
-        inst_sub_port
-        setup_singbox_service
-        build_base_json
+        inst_cert || return 1
+        inst_sub_port || return 1
+        setup_singbox_service || return 1
+        build_base_json || return 1
     fi
     
     echo ""
@@ -1609,7 +1609,7 @@ inst_tuic() {
     local t_sni=$(cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
     
     printf "%b" " ${LIGHT_YELLOW} ▶ 节点显示名称 [回车默认 TUIC_Node]: ${PLAIN}"
-    read custom_node_name || exit 1
+    read custom_node_name || return 1
     [[ -z $custom_node_name ]] && custom_node_name="TUIC_Node"
     echo "$custom_node_name" > /etc/sing-box/tuic_name.txt
     
@@ -1678,9 +1678,28 @@ inst_singbox() {
     [[ -z "$protoInput" ]] && protoInput=1
 
     case "$protoInput" in
-        1) [[ $has_hy2 -eq 0 ]] && inst_hysteria2 || { red " 已安装该节点"; sleep 1; } ;;
-        2) [[ $has_vless -eq 0 ]] && inst_vless_reality || { red " 已安装该节点"; sleep 1; } ;;
-        3) [[ $has_tuic -eq 0 ]] && inst_tuic || { red " 已安装该节点"; sleep 1; } ;;
-        *) inst_hysteria2 ;;
+        1) 
+            if [[ $has_hy2 -eq 0 ]]; then
+                inst_hysteria2 || { echo ""; printf "%b" " ${LIGHT_YELLOW} ▶ 部署异常中断，请检查上方报错信息，按回车键返回...${PLAIN}"; read temp; }
+            else
+                red " 已安装该节点"; sleep 1
+            fi
+            ;;
+        2) 
+            if [[ $has_vless -eq 0 ]]; then
+                inst_vless_reality || { echo ""; printf "%b" " ${LIGHT_YELLOW} ▶ 部署异常中断，请检查上方报错信息，按回车键返回...${PLAIN}"; read temp; }
+            else
+                red " 已安装该节点"; sleep 1
+            fi
+            ;;
+        3) 
+            if [[ $has_tuic -eq 0 ]]; then
+                inst_tuic || { echo ""; printf "%b" " ${LIGHT_YELLOW} ▶ 部署异常中断，请检查上方报错信息，按回车键返回...${PLAIN}"; read temp; }
+            else
+                red " 已安装该节点"; sleep 1
+            fi
+            ;;
+        *) 
+            red " 输入无效"; sleep 1 ;;
     esac
 }
