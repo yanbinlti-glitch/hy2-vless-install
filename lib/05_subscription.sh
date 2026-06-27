@@ -398,6 +398,11 @@ generate_client_configs() {
     # ================= 聚合: TUIC =================
     if [[ $has_tuic -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "TUIC_Node")
+        node_name="${node_name//$'\r'/}"
+        node_name="${node_name//$'\n'/}"
+        node_name="${node_name//\\r/}"
+        node_name="${node_name//\\n/}"
+        [[ -z "$node_name" || "$node_name" == "-1" || "$node_name" == "null" || "$node_name" == "NULL" ]] && node_name="TUIC_Node"
         [[ -z "$node_name" || "$node_name" == "-1" || "$node_name" == "null" || "$node_name" == "NULL" ]] && node_name="TUIC_Node"
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
@@ -415,8 +420,9 @@ generate_client_configs() {
             local s_pwd="$(_uri_encode "$pwd")"
             local s_sni="$(_uri_encode "$sni")"
             
-            local url="tuic://${s_uuid}:${s_pwd}@$(get_link_ip):${bind_port}/?sni=${s_sni}&alpn=h3&congestion_control=bbr#${safe_node_name}"
-            url_all="${url_all}${url}\n"
+            local url="tuic://${s_uuid}:${s_pwd}@$(get_link_ip):${bind_port}/?sni=${s_sni}&alpn=h3&congestion_control=bbr&insecure=1&allow_insecure=1#${safe_node_name}"
+            url_all="${url_all}${url}"$'
+'
 
             proxy_yaml="${proxy_yaml}\n  - name: '${yaml_node_name}'\n    type: tuic\n    server: \"$yaml_json_ip\"\n    port: $bind_port\n    uuid: \"$uuid\"\n    password: \"$pwd\"\n    sni: \"$sni\"\n    alpn: [h3]\n    skip-cert-verify: true\n    reduce-rtt: true\n    udp-relay-mode: native"
             proxy_names="${proxy_names}\n      - '${yaml_node_name}'"
