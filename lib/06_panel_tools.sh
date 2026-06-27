@@ -1274,7 +1274,7 @@ WantedBy=multi-user.target
 SYSTEMD
         sed -i "s|hy2-port-hop-apply|hy2-port-hop-apply${HY2_INSTANCE_SUFFIX}|g" /etc/systemd/system/hy2-port-hop${HY2_INSTANCE_SUFFIX}.service
         _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 
-        _smart_run "正在重载系统级守护进程配置" systemctl enable --now hy2-port-hop${HY2_INSTANCE_SUFFIX}${HY2_INSTANCE_SUFFIX}.service
+        _smart_run "正在重载系统级守护进程配置" systemctl enable --now hy2-port-hop${HY2_INSTANCE_SUFFIX}.service
     fi
 }
 
@@ -1292,7 +1292,7 @@ disable_hy2_port_hopping() {
         rc-update del hy2-port-hop${HY2_INSTANCE_SUFFIX} default >/dev/null 2>&1 || true
         rm -f /etc/init.d/hy2-port-hop${HY2_INSTANCE_SUFFIX}
     else
-        systemctl disable --now hy2-port-hop${HY2_INSTANCE_SUFFIX}${HY2_INSTANCE_SUFFIX}.service >/dev/null 2>&1 || true
+        systemctl disable --now hy2-port-hop${HY2_INSTANCE_SUFFIX}.service >/dev/null 2>&1 || true
         rm -f /etc/systemd/system/hy2-port-hop${HY2_INSTANCE_SUFFIX}.service
         _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 
     fi

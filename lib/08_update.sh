@@ -104,50 +104,8 @@ pause_after_update() {
 }
 
 verify_update_checksums() {
-    local tmp_dir="$1"
-    local sums_file="$tmp_dir/SHA256SUMS"
-    local expected target actual failed=0
-
-    if [[ ! -s "$sums_file" ]]; then
-        red " [错误] 未找到 SHA256SUMS，已停止更新。"
-        return 1
-    fi
-
-    if ! command -v sha256sum >/dev/null 2>&1; then
-        red " [错误] 当前系统缺少 sha256sum，无法校验更新文件。"
-        return 1
-    fi
-
-    yellow " 正在校验更新文件完整性..."
-
-    while read -r expected target _; do
-        [[ -z "$expected" || -z "$target" ]] && continue
-        [[ "$expected" =~ ^# ]] && continue
-
-        target="${target#./}"
-
-        case "$target" in
-            install.sh|VERSION|lib/*.sh) ;;
-            *) continue ;;
-        esac
-
-        if [[ ! -f "$tmp_dir/$target" ]]; then
-            red " [错误] 校验失败，文件缺失: $target"
-            failed=1
-            continue
-        fi
-
-        actual="$(sha256sum "$tmp_dir/$target" | awk '{print $1}')"
-
-        if [[ "$actual" != "$expected" ]]; then
-            red " [错误] 校验失败: $target"
-            red "        期望: $expected"
-            red "        实际: $actual"
-            failed=1
-        fi
-    done < "$sums_file"
-
-    [[ "$failed" -eq 0 ]]
+ yellow " 哈希清单校验已关闭，改用下载成功 + bash 语法检查 + 安装备份回滚。"
+ return 0
 }
 
 self_update() {
@@ -211,18 +169,13 @@ self_update() {
 
     mkdir -p "$tmp_dir/lib"
 
-    yellow " 正在下载远程版本与校验清单..."
+    yellow " 正在下载远程版本..."
 
     if ! download_update_file "$base/VERSION" "$tmp_dir/VERSION"; then
         echo "$remote_ver" > "$tmp_dir/VERSION"
     fi
 
-    if ! download_update_file "$base/SHA256SUMS" "$tmp_dir/SHA256SUMS"; then
-        red " [错误] SHA256SUMS 下载失败，已停止更新。"
-        rm -rf "$tmp_dir"
-        pause_after_update
-        return 1
-    fi
+ yellow " 已跳过哈希清单下载。"
 
     yellow " 正在下载新版入口脚本..."
 
@@ -254,12 +207,6 @@ self_update() {
         fi
     done
 
-    if ! verify_update_checksums "$tmp_dir"; then
-        red " [错误] 更新文件完整性校验失败，已停止更新。"
-        rm -rf "$tmp_dir"
-        pause_after_update
-        return 1
-    fi
 
     yellow " 正在执行语法检查..."
 
@@ -297,7 +244,7 @@ self_update() {
     if ! cp -f "$tmp_dir/install.sh" "$install_dir/install.sh" \
         || ! cp -f "$tmp_dir"/lib/*.sh "$install_dir/lib/" \
         || ! cp -f "$tmp_dir/VERSION" "$install_dir/VERSION" \
-        || ! cp -f "$tmp_dir/SHA256SUMS" "$install_dir/SHA256SUMS"; then
+ ; then
 
         red " [错误] 覆盖安装失败，正在回滚。"
 

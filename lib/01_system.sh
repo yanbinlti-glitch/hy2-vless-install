@@ -34,8 +34,8 @@ _smart_run() {
     shift
     # 清理当前行终端残留
     printf "
-[K"
-    printf "%b" " [1;36m▶ ${msg}...[0m "
+[K"
+    printf "%b" " [1;36m▶ ${msg}...[0m "
     
     # 幽灵进程接管：将真实指令打入黑洞并在后台执行，完美规避 SSH 断流
     "$@" >"$HY2_VLESS_RUN_LOG" 2>&1 &
@@ -51,17 +51,17 @@ _smart_run() {
         printf "[%c]" "$spinstr"
         local spinstr=$temp${spinstr%"$temp"}
         sleep 0.15
-        printf ""
+        printf ""
     done
     wait $pid
     local exit_code=$?
     trap - SIGINT # 任务正常结束，解除拦截
     
     if [ $exit_code -eq 0 ]; then
-        printf "[1;32m[✔] 成功！      [0m
+        printf "[1;32m[✔] 成功！      [0m
 "
     else
-        printf "[1;31m[✘] 失败！(日志存至 $HY2_VLESS_RUN_LOG)[0m
+        printf "[1;31m[✘] 失败！(日志存至 $HY2_VLESS_RUN_LOG)[0m
 "
     fi
     return $exit_code
@@ -82,7 +82,7 @@ _smart_install() {
     if [[ -n "$total_ram" ]] && [ "$total_ram" -lt 400 ] && [ "$(free -m 2>/dev/null | awk '/^Swap:/{print $2}')" -eq 0 ]; then
         printf "%b
 " "
- [1;33m▶ [内存防爆盾] 检测到极小内存 ($total_ram MB)，正动态挂载 512MB 虚拟内存防宕机...[0m"
+ [1;33m▶ [内存防爆盾] 检测到极小内存 ($total_ram MB)，正动态挂载 512MB 虚拟内存防宕机...[0m"
         rm -f "$HY2_VLESS_SWAP_FILE"
         dd if=/dev/zero of="$HY2_VLESS_SWAP_FILE" bs=1M count=512 status=none
         chmod 600 "$HY2_VLESS_SWAP_FILE"
@@ -93,7 +93,7 @@ _smart_install() {
 
     # 清理多余空格并截断超长包名用于 UI 展示
     local display_pkgs=$(echo "$pkgs" | tr -s ' ' | cut -c 1-30)
-    printf "%b" " [1;36m▶ 正在静默极速安装底层依赖: [0;32m${display_pkgs}...[0m "
+    printf "%b" " [1;36m▶ 正在静默极速安装底层依赖: [0;32m${display_pkgs}...[0m "
     
     # 防卡顿：开启子进程静默重定向安装
     (
@@ -115,7 +115,7 @@ _smart_install() {
         printf "[%c]" "$spinstr"
         local spinstr=$temp${spinstr%"$temp"}
         sleep 0.15
-        printf ""
+        printf ""
     done
     wait $pid
     local exit_code=$?
@@ -128,10 +128,10 @@ _smart_install() {
     fi
 
     if [ $exit_code -eq 0 ]; then
-        printf "[1;32m[✔] 成功！      [0m
+        printf "[1;32m[✔] 成功！      [0m
 "
     else
-        printf "[1;31m[✘] 失败！(日志存至 $HY2_VLESS_PKG_LOG)[0m
+        printf "[1;31m[✘] 失败！(日志存至 $HY2_VLESS_PKG_LOG)[0m
 "
     fi
 }

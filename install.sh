@@ -234,72 +234,8 @@ resolve_bootstrap_base() {
 }
 
 verify_bootstrap_checksums() {
-  local root="$1"
-  local manifest="$root/SHA256SUMS"
-  local target=""
-  local expected=""
-  local actual=""
-  local module=""
-  local -a targets=()
-
-  if [[ ! -s "$manifest" ]]; then
-    echo " [错误] 缺少有效的 SHA256SUMS。" >&2
-    return 1
-  fi
-
-  if ! command -v sha256sum >/dev/null 2>&1; then
-    echo " [错误] 系统缺少 sha256sum，无法验证引导文件。" >&2
-    return 1
-  fi
-
-  targets=(
-    "install.sh"
-    "$VERSION_FILE"
-  )
-
-  for module in "${MODULES[@]}"; do
-    targets+=("lib/$module")
-  done
-
-  for target in "${targets[@]}"; do
-    if [[ ! -f "$root/$target" ]]; then
-      echo " [错误] 引导文件缺失：$target" >&2
-      return 1
-    fi
-
-    expected="$(
-      awk \
-        -v target="$target" \
-        '
-          $2 == target || $2 == "./" target {
-            print $1
-            exit
-          }
-        ' \
-        "$manifest"
-    )"
-
-    if [[ ! "$expected" =~ ^[0-9a-fA-F]{64}$ ]]; then
-      echo " [错误] 校验清单缺少有效记录：$target" >&2
-      return 1
-    fi
-
-    actual="$(
-      sha256sum "$root/$target" |
-        awk '{print tolower($1)}'
-    )"
-
-    expected="${expected,,}"
-
-    if [[ "$actual" != "$expected" ]]; then
-      echo " [错误] SHA-256 校验失败：$target" >&2
-      echo " [期望] $expected" >&2
-      echo " [实际] $actual" >&2
-      return 1
-    fi
-  done
-
-  echo " [安全] 首次引导文件 SHA-256 校验全部通过。"
+ echo " [提示] 哈希清单校验已关闭，跳过首次引导哈希校验。"
+ return 0
 }
 
 
@@ -421,14 +357,7 @@ ensure_modules() {
     return 1
   }
 
-  if ! download_file \
-    "$REPO_RAW_BASE/SHA256SUMS" \
-    "$boot_dir/SHA256SUMS"
-  then
-    echo " [错误] SHA256SUMS 下载失败。" >&2
-    rm -rf -- "$boot_dir"
-    return 1
-  fi
+ echo " [提示] 已跳过哈希清单下载。"
 
   if ! download_file \
     "$REPO_RAW_BASE/install.sh" \
@@ -461,10 +390,6 @@ ensure_modules() {
     fi
   done
 
-  if ! verify_bootstrap_checksums "$boot_dir"; then
-    rm -rf -- "$boot_dir"
-    return 1
-  fi
 
   if ! bash -n "$boot_dir/install.sh"; then
     echo " [错误] 下载的 install.sh 语法检查失败。" >&2
@@ -522,7 +447,6 @@ install_self_shortcut() {
  done
 
  cp -f "$SCRIPT_DIR/$VERSION_FILE" "$INSTALL_DIR/$VERSION_FILE" 2>/dev/null || echo "$HY2_VLESS_VERSION" > "$INSTALL_DIR/$VERSION_FILE"
- cp -f "$SCRIPT_DIR/SHA256SUMS" "$INSTALL_DIR/SHA256SUMS" 2>/dev/null || true
  chmod +x "$INSTALL_DIR/install.sh"
  chmod +x "$INSTALL_DIR"/lib/*.sh 2>/dev/null || true
  fi
