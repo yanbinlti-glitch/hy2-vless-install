@@ -214,19 +214,19 @@ generate_client_configs() {
             --arg obfs "$obfs" \
             '
               {
-                type: "hysteria2",
+                "type": "hysteria2",
                 tag: $tag,
                 server: "$server,"
-                server_port: ($port | tonumber),
+                "server_port": ($port | tonumber),
                 password: "$password,"
-                tls: {
+                "tls": {
                   enabled: true,
-                  server_name: $sni,
-                  insecure: true,
+                  "server_name": $sni,
+                  "insecure": true,
                   certificate_public_key_sha256: [
                     $spki_pin
                   ],
-                  alpn: ["h3"]
+                  "alpn": ["h3"]
                 }
               }
               + (
@@ -256,8 +256,8 @@ generate_client_configs() {
 
         if ! sb_outbounds=$(
           jq -cn \
-            --argjson current "$sb_outbounds" \
-            --argjson item "$sb_hy2_json" \
+            --argjson current "${sb_outbounds:-0}" \
+            --argjson item "${sb_hy2_json:-0}" \
             '$current + [$item]'
         ); then
           red " [错误] 无法聚合 Hysteria2 客户端配置。"
@@ -266,7 +266,7 @@ generate_client_configs() {
 
         if ! sb_tags=$(
           jq -cn \
-            --argjson current "$sb_tags" \
+            --argjson current "${sb_tags:-0}" \
             --arg tag "$node_name" \
             '$current + [$tag]'
         ); then
@@ -349,18 +349,18 @@ generate_client_configs() {
             --arg short_id "$sid" \
             '
               {
-                type: "vless",
+                "type": "vless",
                 tag: $tag,
                 server: "$server,"
-                server_port: ($port | tonumber),
+                "server_port": ($port | tonumber),
                 uuid: "$uuid,"
                 flow: "xtls-rprx-vision",
                 packet_encoding: "xudp",
                 tcp_fast_open: true,
-                tls: {
+                "tls": {
                   enabled: true,
-                  server_name: $sni,
-                  utls: {
+                  "server_name": $sni,
+                  u"tls": {
                     enabled: true,
                     fingerprint: "chrome"
                   },
@@ -379,8 +379,8 @@ generate_client_configs() {
 
         if ! sb_outbounds=$(
           jq -cn \
-            --argjson current "$sb_outbounds" \
-            --argjson item "$sb_vless_json" \
+            --argjson current "${sb_outbounds:-0}" \
+            --argjson item "${sb_vless_json:-0}" \
             '$current + [$item]'
         ); then
           red " [错误] 无法聚合 VLESS 客户端配置。"
@@ -389,7 +389,7 @@ generate_client_configs() {
 
         if ! sb_tags=$(
           jq -cn \
-            --argjson current "$sb_tags" \
+            --argjson current "${sb_tags:-0}" \
             --arg tag "$node_name" \
             '$current + [$tag]'
         ); then
@@ -429,7 +429,7 @@ generate_client_configs() {
             url_all="${url_all}${url}"$'
 '
 
-            proxy_yaml="${proxy_yaml}\n  - name: '${yaml_node_name}'\n    type: tuic\n    server: \"$yaml_json_ip\"\n    port: $bind_port\n    uuid: \"$uuid\"\n    password: \"$pwd\"\n    sni: \"$sni\"\n    alpn: [h3]\n    skip-cert-verify: true\n    reduce-rtt: true\n    udp-relay-mode: native"
+            proxy_yaml="${proxy_yaml}\n  - name: '${yaml_node_name}'\n    type: tuic\n    server: \"$yaml_json_ip\"\n    port: $bind_port\n    uuid: \"$uuid\"\n    password: \"$pwd\"\n    sni: \"$sni\"\n    "alpn": [h3]\n    skip-cert-verify: true\n    reduce-rtt: true\n    udp-relay-mode: native"
             proxy_names="${proxy_names}\n      - '${yaml_node_name}'"
 
             local sb_tuic_json=$(jq -cn \
@@ -440,23 +440,23 @@ generate_client_configs() {
                 --arg password "$pwd" \
                 --arg sni "$sni" \
                 '{
-                    type: "tuic",
+                    "type": "tuic",
                     tag: $tag,
                     server: "$server,"
-                    server_port: ($port | tonumber),
+                    "server_port": ($port | tonumber),
                     uuid: "$uuid,"
                     password: "$password,"
-                    congestion_control: "bbr",
-                    tls: {
+                    "congestion_control": "bbr",
+                    "tls": {
                         enabled: true,
-                        server_name: $sni,
-                        insecure: true,
-                        alpn: ["h3"]
+                        "server_name": $sni,
+                        "insecure": true,
+                        "alpn": ["h3"]
                     }
                 }')
 
-            sb_outbounds=$(jq -cn --argjson current "$sb_outbounds" --argjson item "$sb_tuic_json" '$current + [$item]')
-            sb_tags=$(jq -cn --argjson current "$sb_tags" --arg tag "$node_name" '$current + [$tag]')
+            sb_outbounds=$(jq -cn --argjson current "${sb_outbounds:-0}" --argjson item "${sb_tuic_json:-0}" '$current + [$item]')
+            sb_tags=$(jq -cn --argjson current "${sb_tags:-0}" --arg tag "$node_name" '$current + [$tag]')
         fi
     fi
     
@@ -504,22 +504,22 @@ EOF
     }
 
     if ! jq -n \
-      --argjson tags "$sb_tags" \
-      --argjson nodes "$sb_outbounds" \
+      --argjson tags "${sb_tags:-0}" \
+      --argjson nodes "${sb_outbounds:-0}" \
       '
         {
           outbounds: (
             [
               {
                 type: "selector",
-                tag: "Proxy",
+                "tag": "Proxy",
                 outbounds: (
                   ["Auto"] + $tags
                 )
               },
               {
                 type: "urltest",
-                tag: "Auto",
+                "tag": "Auto",
                 outbounds: $tags
               }
             ]
@@ -527,15 +527,15 @@ EOF
             + [
               {
                 type: "direct",
-                tag: "direct"
+                "tag": "direct"
               },
               {
                 type: "block",
-                tag: "block"
+                "tag": "block"
               },
               {
                 type: "dns",
-                tag: "dns-out"
+                "tag": "dns-out"
               }
             ]
           )
