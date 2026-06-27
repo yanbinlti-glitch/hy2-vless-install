@@ -1112,9 +1112,35 @@ modify_hy2_self_signed_cert() {
     local current_sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
     yellow " 当前 Hy2 证书域名 (SNI): $current_sni"
     echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的 Hy2 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
-    read new_sni || return
-    [[ -z "$new_sni" ]] && new_sni="$current_sni"
+    yellow " ▶ 请选择新的伪装域名 / SNI:"
+    printf "%b
+" "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
+    printf "%b
+" "    ${LIGHT_GREEN}[5]${PLAIN} 保持当前域名 ($current_sni)"
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-5] (默认5): ${PLAIN}"
+    read sni_choice || sni_choice=5
+    [[ -z "$sni_choice" ]] && sni_choice=5
+
+    local new_sni="$current_sni"
+    case $sni_choice in
+        1) new_sni="www.bing.com" ;;
+        2) new_sni="www.apple.com" ;;
+        3) new_sni="www.microsoft.com" ;;
+        4)
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入自定义伪装域名 (如 bilibili.com): ${PLAIN}"
+            read new_sni || return
+            [[ -z "$new_sni" ]] && new_sni="$current_sni"
+            ;;
+        5) new_sni="$current_sni" ;;
+        *) new_sni="$current_sni" ;;
+    esac
 
     if [[ ! "$new_sni" =~ ^[A-Za-z0-9.-]+$ ]]; then
         red " [错误] 域名格式不合法。"
@@ -1179,9 +1205,35 @@ modify_tuic_self_signed_cert() {
     local current_sni=$(cat /etc/sing-box/tuic_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
     yellow " 当前 TUIC 证书域名 (SNI): $current_sni"
     echo ""
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的 TUIC 伪装域名 / SNI [回车默认: $current_sni]: ${PLAIN}"
-    read new_sni || return
-    [[ -z "$new_sni" ]] && new_sni="$current_sni"
+    yellow " ▶ 请选择新的伪装域名 / SNI:"
+    printf "%b
+" "    ${LIGHT_GREEN}[1]${PLAIN} www.bing.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[2]${PLAIN} www.apple.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[3]${PLAIN} www.microsoft.com"
+    printf "%b
+" "    ${LIGHT_GREEN}[4]${PLAIN} 自定义输入"
+    printf "%b
+" "    ${LIGHT_GREEN}[5]${PLAIN} 保持当前域名 ($current_sni)"
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-5] (默认5): ${PLAIN}"
+    read sni_choice || sni_choice=5
+    [[ -z "$sni_choice" ]] && sni_choice=5
+
+    local new_sni="$current_sni"
+    case $sni_choice in
+        1) new_sni="www.bing.com" ;;
+        2) new_sni="www.apple.com" ;;
+        3) new_sni="www.microsoft.com" ;;
+        4)
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入自定义伪装域名 (如 bilibili.com): ${PLAIN}"
+            read new_sni || return
+            [[ -z "$new_sni" ]] && new_sni="$current_sni"
+            ;;
+        5) new_sni="$current_sni" ;;
+        *) new_sni="$current_sni" ;;
+    esac
 
     if [[ ! "$new_sni" =~ ^[A-Za-z0-9.-]+$ ]]; then
         red " [错误] 域名格式不合法。"
