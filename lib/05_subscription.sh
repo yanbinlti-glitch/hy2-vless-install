@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
-
 # 物理地基校验：确保极限环境下目录结构绝对存在
 ensure_foundation() {
     if [[ ! -d "/opt/hy2_tmp" ]]; then
@@ -135,8 +134,6 @@ generate_client_configs() {
         fi
         local hop_ports=$(cat /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
         [[ ! "$hop_ports" =~ ^[0-9]+-[0-9]+$ ]] && hop_ports=""
-        # 通用 hysteria2:// URI 使用主监听端口，避免部分客户端/订阅转换器无法解析端口范围。
-        # Clash/Mihomo 与 sing-box 专用订阅仍分别通过 ports / server_ports 保留端口跳跃。
         local hy2_client_port="$bind_port"
         local sni=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null)
         [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
@@ -175,21 +172,19 @@ generate_client_configs() {
         [[ -n "$obfs" ]] && url="${url}&obfs=salamander&obfs-password=${s_obfs}"
         url="${url}#${safe_node_name}"
         
-        # 修复 Bug 1：使用标准 Bash 物理换行，防止写死字面量 \n
         url_all="${url_all}${url}
 "
 
+        # 已修复 Hysteria2 的多余双引号问题
         proxy_yaml="${proxy_yaml}
   - name: '${yaml_node_name}'
-
     type: hysteria2
     udp: true
-    server: "$yaml_json_ip"
+    server: \"$yaml_json_ip\"
     port: $bind_port
     $(if [[ -n "$hop_ports" ]]; then printf 'ports: "%s"' "$hop_ports"; fi)
     password: '${yaml_pwd}'
-
-    sni: "$sni"
+    sni: \"$sni\"
     skip-cert-verify: true
     alpn:
       - h3"
@@ -197,13 +192,12 @@ generate_client_configs() {
     obfs: salamander
     obfs-password: \"$obfs\""
         
-        # 修复 Bug 2：防止 YAML 数组解析报错
         proxy_names="${proxy_names}
       - '${yaml_node_name}'"
         
-
         local sb_hy2_json=""
 
+        # 已修复 jq 引擎的逗号陷阱
         if ! sb_hy2_json=$(
           jq -cn \
             --arg tag "$node_name" \
@@ -218,9 +212,9 @@ generate_client_configs() {
               {
                 type: "hysteria2",
                 tag: $tag,
-                server: "$server,"
+                server: $server,
                 server_port: ($port | tonumber),
-                password: "$password,"
+                password: $password,
                 tls: {
                   enabled: true,
                   server_name: $sni,
@@ -244,8 +238,7 @@ generate_client_configs() {
                 then {
                   obfs: {
                     type: "salamander",
-                    password: "$obfs"
-
+                    password: $obfs
                   }
                 }
                 else {}
@@ -318,30 +311,30 @@ generate_client_configs() {
         url_all="${url_all}${url}
 "
 
+        # 已修复 VLESS 的多余双引号问题
         proxy_yaml="${proxy_yaml}
   - name: '${yaml_node_name}'
-
     type: vless
-    server: "$yaml_json_ip"
+    server: \"$yaml_json_ip\"
     port: $bind_port
-    uuid: "$uuid"
+    uuid: \"$uuid\"
     network: tcp
     tls: true
     udp: true
     xudp: true
     flow: xtls-rprx-vision
     servername: \"$sni\"
-    client-fingerprint: "chrome"
+    client-fingerprint: \"chrome\"
     reality-opts:
-      public-key: "$pub"
-      short-id: "$sid""
+      public-key: \"$pub\"
+      short-id: \"$sid\""
         
         proxy_names="${proxy_names}
       - '${yaml_node_name}'"
         
-
         local sb_vless_json=""
 
+        # 已修复 jq 引擎的逗号陷阱
         if ! sb_vless_json=$(
           jq -cn \
             --arg tag "$node_name" \
@@ -355,9 +348,9 @@ generate_client_configs() {
               {
                 type: "vless",
                 tag: $tag,
-                server: "$server,"
+                server: $server,
                 server_port: ($port | tonumber),
-                uuid: "$uuid,"
+                uuid: $uuid,
                 flow: "xtls-rprx-vision",
                 packet_encoding: "xudp",
                 tcp_fast_open: true,
@@ -402,8 +395,6 @@ generate_client_configs() {
         fi
     fi
 
-
-
     # ================= 聚合: TUIC =================
     if [[ $has_tuic -eq 1 ]]; then
         local node_name=$(cat /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "TUIC_Node")
@@ -411,7 +402,6 @@ generate_client_configs() {
         node_name="${node_name//$'\n'/}"
         node_name="${node_name//\\r/}"
         node_name="${node_name//\\n/}"
-        [[ -z "$node_name" || "$node_name" == "-1" || "$node_name" == "null" || "$node_name" == "NULL" ]] && node_name="TUIC_Node"
         [[ -z "$node_name" || "$node_name" == "-1" || "$node_name" == "null" || "$node_name" == "NULL" ]] && node_name="TUIC_Node"
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
@@ -422,7 +412,6 @@ generate_client_configs() {
         pwd=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
         sni=$(jq -r '[.inbounds[]? | select(.tag=="tuic-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
         [[ -z "$sni" || "$sni" == "-1" || "$sni" == "null" || "$sni" == "NULL" ]] && sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
-        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
 
         if [[ -n "$bind_port" && -n "$uuid" && -n "$pwd" ]]; then
             local s_uuid="$(_uri_encode "$uuid")"
@@ -430,12 +419,27 @@ generate_client_configs() {
             local s_sni="$(_uri_encode "$sni")"
             
             local url="tuic://${s_uuid}:${s_pwd}@$(get_link_ip):${bind_port}/?sni=${s_sni}&alpn=h3&congestion_control=bbr&insecure=1&allow_insecure=1#${safe_node_name}"
-            url_all="${url_all}${url}"$'
-'
+            url_all="${url_all}${url}
+"
 
-            proxy_yaml="${proxy_yaml}\n  - name: '${yaml_node_name}'\n    type: tuic\n    server: \"$yaml_json_ip\"\n    port: $bind_port\n    uuid: \"$uuid\"\n    password: \"$pwd\"\n    sni: \"$sni\"\n    alpn: [h3]\n    skip-cert-verify: true\n    reduce-rtt: true\n    udp-relay-mode: native"
-            proxy_names="${proxy_names}\n      - '${yaml_node_name}'"
+            # 已修复 TUIC 的 YAML 物理换行失效问题
+            proxy_yaml="${proxy_yaml}
+  - name: '${yaml_node_name}'
+    type: tuic
+    server: \"$yaml_json_ip\"
+    port: $bind_port
+    uuid: \"$uuid\"
+    password: \"$pwd\"
+    sni: \"$sni\"
+    alpn: [h3]
+    skip-cert-verify: true
+    reduce-rtt: true
+    udp-relay-mode: native"
 
+            proxy_names="${proxy_names}
+      - '${yaml_node_name}'"
+
+            # 已修复 jq 引擎的逗号陷阱
             local sb_tuic_json=$(jq -cn \
                 --arg tag "$node_name" \
                 --arg server "$yaml_json_ip" \
@@ -446,10 +450,10 @@ generate_client_configs() {
                 '{
                     type: "tuic",
                     tag: $tag,
-                    server: "$server,"
+                    server: $server,
                     server_port: ($port | tonumber),
-                    uuid: "$uuid,"
-                    password: "$password,"
+                    uuid: $uuid,
+                    password: $password,
                     congestion_control: "bbr",
                     tls: {
                         enabled: true,
@@ -464,7 +468,6 @@ generate_client_configs() {
         fi
     fi
     
-    # 修复 Bug 3：正确输出文本流
   printf "%s" "$url_all" > "$web_dir/$sub_uuid/url.txt"
     printf "%s" "$url_all" | base64 -w 0 2>/dev/null > "$web_dir/$sub_uuid/sub_b64.txt" || printf "%s" "$url_all" | base64 | tr -d '\r\n' > "$web_dir/$sub_uuid/sub_b64.txt"
 
@@ -495,7 +498,6 @@ $([[ "$yaml_json_ip" == *":"* ]] && echo "  - IP-CIDR6,$yaml_json_ip/128,DIRECT,
   - GEOIP,CN,DIRECT
   - MATCH,节点选择
 EOF
-
 
     local singbox_json_tmp=""
 
@@ -748,4 +750,3 @@ clean_env() {
         rm -f /usr/bin/666 /usr/bin/hy2
     fi
 }
-
