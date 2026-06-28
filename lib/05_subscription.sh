@@ -30,13 +30,32 @@ generate_client_configs() {
         return
     fi
 
-    local sub_port=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+local sub_port=$(cat /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+    
+    # =======================================================
+    # [核心级防撞车雷达] 跨维度扫描所有分身，若 Nginx 端口冲突则强制作废重分
+    # =======================================================
+    if [[ -n "$sub_port" ]]; then
+        for other_port_file in /etc/sing-box*/sub_port*.txt; do
+            if [[ "$other_port_file" != "/etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt" ]] && [[ -f "$other_port_file" ]]; then
+                if [[ "$(cat "$other_port_file" 2>/dev/null | LC_ALL=C tr -dc '0-9')" == "$sub_port" ]]; then
+                    yellow "  [警告] 侦测到 Nginx 订阅端口 ($sub_port) 与其他平行分身发生物理撞车！"
+                    yellow "  [修复] 正在销毁冲突端口，重新分配物理隔离通道..."
+                    sub_port=""
+                    break
+                fi
+            fi
+        done
+    fi
+
     if [[ -z "$sub_port" ]]; then
-        yellow "  [订阅修复] 未检测到订阅端口，正在自动生成新的订阅端口..."
+        yellow "  [订阅修复] 正在生成完全独立的 Nginx 订阅分发端口..."
         sub_port=$(shuf -i 10000-30000 -n 1)
-        while ss -tnl 2>/dev/null | grep -E -q "(:|^)$sub_port( |$)"; do
+        # 终极雷达：同时扫描当前系统的活跃监听端口，以及所有平行分身的已登记端口
+        while ss -tnl 2>/dev/null | grep -E -q "(:|^)$sub_port( |$)" || grep -h "^${sub_port}$" /etc/sing-box*/sub_port*.txt 2>/dev/null | grep -q "^${sub_port}$"; do
             sub_port=$(shuf -i 10000-30000 -n 1)
         done
+    # =======================================================
         printf "%s\n" "$sub_port" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt
         open_port "$sub_port" "tcp" "sub"
     fi
