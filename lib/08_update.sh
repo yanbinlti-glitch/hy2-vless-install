@@ -1,76 +1,84 @@
-#!/usr/bin/env bash
-# shellcheck shell=bash
-
-HY2_REPO_OWNER="${HY2_REPO_OWNER:-yanbinlti-glitch}"
-HY2_REPO_NAME="${HY2_REPO_NAME:-hy2-vless-install}"
-HY2_REPO_BRANCH="${HY2_REPO_BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/hy2-vless-install}"
-
-get_local_version() { cat "${INSTALL_DIR}/VERSION" 2>/dev/null || cat "${SCRIPT_DIR:-.}/VERSION" 2>/dev/null || echo "dev"; }
-
-download_update_file() {
-    local url="$1"; local out="$2"; mkdir -p "$(dirname "$out")"
-    if command -v curl >/dev/null 2>&1; then curl -fsSL --connect-timeout 15 --retry 3 "$url" -o "$out"
-    elif command -v wget >/dev/null 2>&1; then wget -q --timeout=15 --tries=3 -O "$out" "$url"
-    else return 1; fi
-}
-
 self_update() {
-    local base="https://raw.githubusercontent.com/${HY2_REPO_OWNER}/${HY2_REPO_NAME}/${HY2_REPO_BRANCH}"
-    local local_ver tmp_dir install_dir bak_dir m
-    local -a update_modules=("00_ui.sh" "01_system.sh" "02_service_firewall.sh" "03_env_core.sh" "04_install_nodes.sh" "05_subscription.sh" "06_panel_tools.sh" "07_menu.sh" "08_update.sh")
-
     clear
-    green " ──────────────────────────────────────────────────────────"
-    green " 检查 / 在线更新脚本 (极速强拉无哈希版) "
-    green " ──────────────────────────────────────────────────────────"
+    print_line
+    green " 检查 / 在线更新脚本 (多开智能同步版) "
+    print_line
     echo ""
-
-    local_ver="$(get_local_version)"
-    yellow " 当前版本: ${local_ver}"
-    yellow " 更新源地址: ${base}"
     
-    printf "%b" " ${LIGHT_YELLOW} ▶ 是否拉取最新代码并强制覆盖更新？(y/n) [默认: y]: ${PLAIN}"
-    read -r confirm_update || confirm_update="y"
-    [[ -z "$confirm_update" ]] && confirm_update="y"
+    local local_version="${HY2_VLESS_VERSION:-未知}"
+    # 读取 Github 远端版本号
+    local remote_version=$(curl -sL --max-time 5 "https://raw.githubusercontent.com/yanbinlti-glitch/hy2-vless-install/main/VERSION" | tr -d '\r\n')
+    [[ -z "$remote_version" ]] && remote_version="获取失败"
 
-    if [[ "$confirm_update" != "y" && "$confirm_update" != "Y" ]]; then
-        yellow " 已取消更新。"; echo ""; printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回...${PLAIN}"; read -r _ || true; return 0
+    printf "%b\n" " 当前版本: ${LIGHT_GREEN}${local_version}${PLAIN}"
+    printf "%b\n" " 最新版本: ${LIGHT_CYAN}${remote_version}${PLAIN}"
+    echo ""
+    
+    # 智能更新策略判定
+    if [[ -z "$HY2_CLONE_NAME" ]]; then
+        yellow " ▶ 当前环境: [本体 (Main)]"
+        yellow " ▶ 更新策略: 将同时更新本体，并自动将最新纯净代码转码辐射至【所有已存在的分身】！"
+    else
+        yellow " ▶ 当前环境: [分身 ($HY2_CLONE_NAME)]"
+        yellow " ▶ 更新策略: 仅更新当前分身，完全沙盒物理隔离，不影响本体及其他实例。"
     fi
+    echo ""
+    printf "%b" " ${LIGHT_YELLOW}▶ 是否拉取最新代码并强制更新？(y/n) [默认: y]: ${PLAIN}"
+    read update_choice
+    [[ "$update_choice" == "n" || "$update_choice" == "N" ]] && return 0
 
-    tmp_dir="$(mktemp -d /tmp/hy2-vless-update.XXXXXX)"; mkdir -p "$tmp_dir/lib"
-
-    yellow " 正在绕过哈希限制，直接强拉远程模块..."
-    download_update_file "$base/VERSION" "$tmp_dir/VERSION" || echo "latest" > "$tmp_dir/VERSION"
-    download_update_file "$base/install.sh" "$tmp_dir/install.sh" || { red " [错误] install.sh 下载失败。"; read -p " ▶ 按回车键返回..." temp; return 1; }
-
-    for m in "${update_modules[@]}"; do
-        download_update_file "$base/lib/$m" "$tmp_dir/lib/$m" || { red " [错误] 模块下载失败: $m"; read -p " ▶ 按回车键返回..." temp; return 1; }
-    done
-
-    install_dir="$INSTALL_DIR"
-    bak_dir="${install_dir}.bak.$(date +%F-%H%M%S)"
-    mkdir -p "$install_dir/lib"
-    [[ -d "$install_dir" ]] && cp -a "$install_dir" "$bak_dir" 2>/dev/null || true
-
+    yellow " 正在从云端拉取最新代码包..."
+    
+    local dl_tmp="/tmp/hy2_dl_tmp"
+    local tmp_base="/tmp/hy2_vless_update_base"
+    rm -rf "$dl_tmp" "$tmp_base"
+    mkdir -p "$dl_tmp" "$tmp_base"
+    
+    # 使用 tar.gz 打包拉取，比单文件遍历更快更安全
+    if ! curl -sL "https://github.com/yanbinlti-glitch/hy2-vless-install/archive/refs/heads/main.tar.gz" | tar -xz -C "$dl_tmp"; then
+        red " [错误] 代码拉取失败，请检查网络！"
+        read -p " ▶ 按回车键返回..." temp; return 1
+    fi
+    
+    cp -a "$dl_tmp"/hy2-vless-install-main/. "$tmp_base/" 2>/dev/null || cp -a "$dl_tmp"/. "$tmp_base/"
+    rm -rf "$dl_tmp"
+    
+    # 强制净化跨平台回车符污染
+    find "$tmp_base" -type f -name "*.sh" -exec sed -i 's/\r$//' {} + 2>/dev/null
+    [ -f "$tmp_base/VERSION" ] && sed -i 's/\r$//' "$tmp_base/VERSION"
+    
     if [[ -n "$HY2_CLONE_NAME" ]]; then
-        yellow " 正在对分身 $HY2_CLONE_NAME 实施物理隔离转换..."
-        apply_clone_transform "$HY2_CLONE_NAME" "$tmp_dir"
+        yellow " 正在将更新文件转码适配至当前分身 $HY2_CLONE_NAME ..."
+        apply_clone_transform "$HY2_CLONE_NAME" "$tmp_base"
+        cp -af "$tmp_base/." "/opt/hy2-vless-install_${HY2_CLONE_NAME}/"
+        green " [✔] 分身 $HY2_CLONE_NAME 独立更新成功！"
+    else
+        yellow " 正在更新本体 (Main)..."
+        cp -af "$tmp_base/." "/opt/hy2-vless-install/"
+        green " [✔] 本体更新成功！"
+        
+        # 集群联动：扫描并同步更新所有分身
+        for dir in /opt/hy2-vless-install_*; do
+            if [[ -d "$dir" && -f "$dir/install.sh" ]]; then
+                local cname="${dir#/opt/hy2-vless-install_}"
+                yellow " 发现分身: $cname，正在自动编译并同步更新..."
+                local c_tmp="/tmp/hy2_update_clone_${cname}"
+                rm -rf "$c_tmp"
+                cp -a "$tmp_base" "$c_tmp"
+                apply_clone_transform "$cname" "$c_tmp"
+                cp -af "$c_tmp/." "$dir/"
+                rm -rf "$c_tmp"
+                green "   └─ [✔] 分身 $cname 同步更新完成！"
+            fi
+        done
     fi
-
-    if ! cp -f "$tmp_dir/install.sh" "$install_dir/install.sh" || ! cp -f "$tmp_dir"/lib/*.sh "$install_dir/lib/" || ! cp -f "$tmp_dir/VERSION" "$install_dir/VERSION"; then
-        red " [错误] 覆盖失败，已恢复原版。"; read -p " ▶ 按回车键返回..." temp; return 1
+    
+    rm -rf "$tmp_base"
+    green " [✔] 全局在线更新完毕！即将在 3 秒后热重载面板..."
+    sleep 3
+    if [[ -n "$HY2_CLONE_NAME" ]]; then
+        exec bash "/opt/hy2-vless-install_${HY2_CLONE_NAME}/install.sh"
+    else
+        exec bash "/opt/hy2-vless-install/install.sh"
     fi
-
-    chmod +x "$install_dir/install.sh" "$install_dir"/lib/*.sh 2>/dev/null || true
-    cat > /usr/bin/666 <<EOF_WRAPPER
-#!/usr/bin/env bash
-cd "$install_dir" || exit 1
-exec bash "$install_dir/install.sh" "\$@"
-EOF_WRAPPER
-    chmod +x /usr/bin/666; rm -rf "$tmp_dir"
-
-    green " [✔] 无哈希极速热更新完成！"
-    yellow " [提示] 3 秒后自动重启新版面板..."
-    sleep 3; exec bash "$install_dir/install.sh"
 }

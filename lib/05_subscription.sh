@@ -216,12 +216,12 @@ generate_client_configs() {
               {
                 type: "hysteria2",
                 tag: $tag,
-                server: $server,
+                server: '$server',
                 server_port: ($port | tonumber),
-                password: $password,
+                password: '$password',
                 tls: {
                   enabled: true,
-                  server_name: $sni,
+                  server_name: '$sni',
                   insecure: true,
                   certificate_public_key_sha256: [
                     $spki_pin
@@ -242,7 +242,7 @@ generate_client_configs() {
                 then {
                   obfs: {
                     type: "salamander",
-                    password: "$obfs"
+                    password: '$obfs'
                   }
                 }
                 else {}
@@ -351,15 +351,15 @@ generate_client_configs() {
               {
                 type: "vless",
                 tag: $tag,
-                server: $server,
+                server: '$server',
                 server_port: ($port | tonumber),
-                uuid: $uuid,
+                uuid: '$uuid',
                 flow: "xtls-rprx-vision",
                 packet_encoding: "xudp",
                 tcp_fast_open: true,
                 tls: {
                   enabled: true,
-                  server_name: $sni,
+                  server_name: '$sni',
                   utls: {
                     enabled: true,
                     fingerprint: "chrome"
@@ -442,14 +442,14 @@ generate_client_configs() {
                 '{
                     type: "tuic",
                     tag: $tag,
-                    server: $server,
+                    server: '$server',
                     server_port: ($port | tonumber),
-                    uuid: $uuid,
-                    password: $password,
+                    uuid: '$uuid',
+                    password: '$password',
                     congestion_control: "bbr",
                     tls: {
                         enabled: true,
-                        server_name: $sni,
+                        server_name: '$sni',
                         insecure: true,
                         alpn: ["h3"]
                     }
