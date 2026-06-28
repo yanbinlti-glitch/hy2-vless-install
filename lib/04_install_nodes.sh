@@ -396,7 +396,7 @@ EOF
 }
 LOGEOF
         _secure_singbox_runtime_permissions || return 1
-        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload
+        systemctl daemon-reload
     fi
 
     # 注入后台幽灵清道夫 (每天凌晨 4 点智能清理极限小鸡缓存)
@@ -437,7 +437,7 @@ CLEANEOF
     if [[ -f /etc/systemd/system/sing-box${HY2_INSTANCE_SUFFIX}.service ]]; then
         sed -i "s/GOMEMLIMIT=50MiB/GOMEMLIMIT=$sys_gomem/g" /etc/systemd/system/sing-box${HY2_INSTANCE_SUFFIX}.service
         sed -i "s/GOGC=20/GOGC=$sys_gogc/g" /etc/systemd/system/sing-box${HY2_INSTANCE_SUFFIX}.service
-        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 2
+        systemctl daemon-reload
     fi
 }
 

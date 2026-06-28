@@ -759,7 +759,7 @@ clean_env() {
         rm -f /etc/init.d/sing-box${HY2_INSTANCE_SUFFIX}
     else
         rm -f /etc/systemd/system/sing-box${HY2_INSTANCE_SUFFIX}.service
-        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload
+        systemctl daemon-reload
     fi
     save_iptables
 

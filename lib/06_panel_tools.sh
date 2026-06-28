@@ -295,7 +295,7 @@ config_outbound() {
     print_line
     echo ""
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         red " 未检测到 Sing-box 配置文件，请先安装！"
         sleep 2
         return
@@ -340,7 +340,7 @@ config_outbound() {
     outbound_jq_err="$outbound_tmp_dir/jq.err"
 
     local current_outbound=""
-    current_outbound="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+    current_outbound="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
 
     if [[ -n "$current_outbound" && "$current_outbound" != "null" ]]; then
         local out_server=""
@@ -348,8 +348,8 @@ config_outbound() {
         local display_type=""
         local is_global="智能分流"
 
-        out_server="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
-        is_tls="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+        out_server="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+        is_tls="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
         display_type="${current_outbound^^}"
         
         [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="HTTPS"
@@ -357,9 +357,9 @@ config_outbound() {
         [[ "$current_outbound" == "vless" ]] && display_type="VLESS (链式隧道)"
         [[ "$current_outbound" == "tuic" ]] && display_type="TUIC v5 (链式隧道)"
 
-        if jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and .inbound != null)' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        if jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and .inbound != null)' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
             is_global="指定节点"
-        elif jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        elif jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
             is_global="全局"
         fi
 
@@ -466,9 +466,9 @@ config_outbound() {
                 # 动态扫描当前配置文件的协议开启状态，TUIC 不再被遗忘
                 local has_hy2_cfg=0 has_vless_cfg=0 has_tuic_cfg=0
 
-                jq -e '.inbounds[]? | select(.tag=="hy2-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_hy2_cfg=1
-                jq -e '.inbounds[]? | select(.tag=="vless-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_vless_cfg=1
-                jq -e '.inbounds[]? | select(.tag=="tuic-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_tuic_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="hy2-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_hy2_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="vless-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_vless_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="tuic-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_tuic_cfg=1
 
                 if [[ "$has_hy2_cfg" -eq 0 && "$has_vless_cfg" -eq 0 && "$has_tuic_cfg" -eq 0 ]]; then
                     red " [错误] 未检测到任何节点入站！"
@@ -583,7 +583,6 @@ config_outbound() {
                         server: $addr,
                         server_port: ($port | tonumber),
                         uuid: $uuid,
-                        flow: "xtls-rprx-vision",
                         tls: {
                             enabled: true,
                             server_name: $sni,
@@ -665,7 +664,7 @@ config_outbound() {
                         {"network": "udp", "port": 443, "action": "route", "outbound": "block"},
                         {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             elif [[ "$out_choice" == "2" ]]; then
                 jq --slurpfile ob "$outbound_block_tmp" '
                     if (.outbounds | type) != "array" then .outbounds = [] else . end
@@ -681,10 +680,8 @@ config_outbound() {
                         {"protocol": "dns", "action": "route", "outbound": "direct"},
                         {"port": 53, "action": "route", "outbound": "direct"},
                         {"network": "udp", "port": 443, "action": "route", "outbound": "block"}
-                    ] + .route.rules + [
-                        {"action": "route", "outbound": "proxy"}
-                    ]
-                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                    ] + [{"action": "route", "outbound": "proxy"}] + .route.rules
+                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             else
                 jq --slurpfile ob "$outbound_block_tmp" --arg inb "$target_inbound" '
                     if (.outbounds | type) != "array" then .outbounds = [] else . end
@@ -699,7 +696,7 @@ config_outbound() {
                     | .route.rules = [
                         {"inbound": [$inb], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             fi
 
             if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
@@ -708,13 +705,13 @@ config_outbound() {
                 _outbound_cleanup; _outbound_pause; return 1
             fi
 
-            if ! mv -f -- "$config_tmp" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+            if ! mv -f -- "$config_tmp" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
                 _abort_singbox_config_update "无法发布落地代理配置"
                 _outbound_cleanup; _outbound_pause; return 1
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
@@ -746,7 +743,7 @@ config_outbound() {
                 | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
-            ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+            ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
 
             if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "关闭落地代理配置生成或 JSON 校验失败"
@@ -754,13 +751,13 @@ config_outbound() {
                 _outbound_cleanup; _outbound_pause; return 1
             fi
 
-            if ! mv -f -- "$config_tmp" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+            if ! mv -f -- "$config_tmp" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
                 _abort_singbox_config_update "无法发布关闭落地代理配置"
                 _outbound_cleanup; _outbound_pause; return 1
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
@@ -1518,8 +1515,8 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 SYSTEMD
         sed -i "s|hy2-port-hop-apply|hy2-port-hop-apply${HY2_INSTANCE_SUFFIX}|g" /etc/systemd/system/hy2-port-hop${HY2_INSTANCE_SUFFIX}.service
-        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 
-        _smart_run "正在重载系统级守护进程配置" systemctl enable --now hy2-port-hop${HY2_INSTANCE_SUFFIX}.service
+        systemctl daemon-reload 
+        systemctl enable --now hy2-port-hop${HY2_INSTANCE_SUFFIX}.service
     fi
 }
 
@@ -1539,7 +1536,7 @@ disable_hy2_port_hopping() {
     else
         systemctl disable --now hy2-port-hop${HY2_INSTANCE_SUFFIX}.service >/dev/null 2>&1 || true
         rm -f /etc/systemd/system/hy2-port-hop${HY2_INSTANCE_SUFFIX}.service
-        _smart_run "正在重载系统级守护进程配置" systemctl daemon-reload 
+        systemctl daemon-reload 
     fi
 
     rm -f /usr/local/bin/hy2-port-hop-apply${HY2_INSTANCE_SUFFIX}
@@ -2146,7 +2143,7 @@ install_or_repair_warp_ipv6_iface() {
     fi
 
     if command -v systemctl >/dev/null 2>&1; then
-        _smart_run "正在重载系统级守护进程配置" systemctl enable "wg-quick@${iface}"
+        systemctl enable "wg-quick@${iface}"
     elif command -v rc-update >/dev/null 2>&1; then
         rc-update add wireguard default >/dev/null 2>&1 || true
     fi
