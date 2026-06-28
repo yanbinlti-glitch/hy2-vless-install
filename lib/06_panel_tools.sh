@@ -58,7 +58,7 @@ remove_node() {
         fi
 
         if ! _prepare_config_tmp_dir >/dev/null 2>&1; then
-            install -d -m 700 "$tmp_dir" 2>/dev/null || {
+            install -d -m 755 "$tmp_dir" 2>/dev/null || {
                 red " [错误] 无法准备配置临时目录。"
                 return 1
             }
@@ -107,7 +107,7 @@ remove_node() {
             return 1
         fi
 
-        _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+        _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
         if ! restart_singbox_checked; then
             red " [错误] 卸载后 Sing-box 配置应用失败，已自动回滚。"
@@ -594,7 +594,7 @@ config_outbound() {
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
@@ -648,7 +648,7 @@ config_outbound() {
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
@@ -966,7 +966,7 @@ apply_singbox_config_with_rollback() {
         cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json "$backup"
     fi
 
-    chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
     if ! jq . /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
         red " [错误] JSON 结构校验失败，正在回滚。"
@@ -2021,7 +2021,7 @@ install_or_repair_warp_ipv6_iface() {
 
     mv -f /tmp/wgcf.conf.fixed "$work_dir/${iface}.conf"
 
-    chmod 600 "$work_dir/${iface}.conf"
+    chmod 644 "$work_dir/${iface}.conf"
 
     yellow " 正在启动 WARP IPv6 接口: $iface"
 
@@ -2245,7 +2245,7 @@ enable_warp_ipv6_route() {
     fi
 
     mv -f /tmp/sb_warp_ipv6.json /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
-    chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
     if [[ -x /usr/local/bin/sing-box ]]; then
         if ! /usr/local/bin/sing-box check -c /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
@@ -2304,7 +2304,7 @@ disable_warp_ipv6_route() {
     fi
 
     mv -f /tmp/sb_disable_warp_ipv6.json /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
-    chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
     if [[ -x /usr/local/bin/sing-box ]]; then
         if ! /usr/local/bin/sing-box check -c /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
@@ -2435,10 +2435,10 @@ instance_manager() {
             yellow " 正在为分身注入最高运行权限 (Root Privilege Escalation)..."
             
             # 1. 物理修改分身脚本基因，杜绝 600/700 独裁权限，改为全局可读
-            sed -i 's/chmod 600/chmod 644/g' "/opt/hy2-vless-install_${new_clone}/lib/"*.sh 2>/dev/null || true
-            sed -i 's/chmod 600/chmod 644/g' "/opt/hy2-vless-install_${new_clone}/"*.sh 2>/dev/null || true
-            sed -i 's/install -d -m 700/install -d -m 755/g' "/opt/hy2-vless-install_${new_clone}/lib/"*.sh 2>/dev/null || true
-            sed -i 's/install -d -m 700/install -d -m 755/g' "/opt/hy2-vless-install_${new_clone}/"*.sh 2>/dev/null || true
+            sed -i 's/chmod 644/chmod 644/g' "/opt/hy2-vless-install_${new_clone}/lib/"*.sh 2>/dev/null || true
+            sed -i 's/chmod 644/chmod 644/g' "/opt/hy2-vless-install_${new_clone}/"*.sh 2>/dev/null || true
+            sed -i 's/install -d -m 755/install -d -m 755/g' "/opt/hy2-vless-install_${new_clone}/lib/"*.sh 2>/dev/null || true
+            sed -i 's/install -d -m 755/install -d -m 755/g' "/opt/hy2-vless-install_${new_clone}/"*.sh 2>/dev/null || true
             
             # 2. 如果分身的守护进程已经生成，强制篡改 User 为 root，绝不降权
             if [[ -f "/etc/systemd/system/sing-box_${new_clone}.service" ]]; then

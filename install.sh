@@ -407,7 +407,7 @@ ensure_modules() {
   done
 
   chmod 700 "$boot_dir/install.sh"
-  chmod 600 "$boot_dir/SHA256SUMS"
+  chmod 644 "$boot_dir/SHA256SUMS"
   chmod 644 "$boot_dir/$VERSION_FILE"
   chmod 700 "$boot_dir"/lib/*.sh
 

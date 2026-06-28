@@ -84,7 +84,7 @@ generate_client_configs() {
   ) || return 1
 
   printf '%s\n' "$sub_uuid" > "$token_tmp"
-  chmod 600 "$token_tmp"
+  chmod 644 "$token_tmp"
 
   if ! mv -f "$token_tmp" "$token_file"; then
     rm -f "$token_tmp"
@@ -97,7 +97,7 @@ generate_client_configs() {
   printf '%s\n' "$sub_uuid" \
     > /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt
 
-  chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt
+  chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt
 
   local web_dir="/var/www/sing-box${HY2_INSTANCE_SUFFIX}"
 
@@ -623,7 +623,7 @@ EOF
         return 1
       fi
 
-      chmod 600 "$nginx_conf_backup"
+      chmod 644 "$nginx_conf_backup"
       nginx_conf_had_file=1
     fi
 

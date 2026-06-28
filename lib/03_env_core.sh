@@ -42,7 +42,7 @@ run_logged_with_timeout() {
   local label="${HY2_PROGRESS_LABEL:-$(hy2_cmd_label "$cmd" 2>/dev/null || echo "执行系统命令")}"
 
   : > "$logfile"
-  chmod 600 "$logfile" 2>/dev/null || true
+  chmod 644 "$logfile" 2>/dev/null || true
 
   if declare -F hy2_progress_run_shell_with_log >/dev/null 2>&1; then
     hy2_progress_run_shell_with_log "$label" "$logfile" "$seconds" "$cmd"
@@ -127,7 +127,7 @@ auto_source_guard() {
     return 1
   fi
 
-  if ! install -d -m 700 "$probe_dir"; then
+  if ! install -d -m 755 "$probe_dir"; then
     red " [错误] 无法创建软件源探测日志目录：$probe_dir"
     return 1
   fi
@@ -142,7 +142,7 @@ auto_source_guard() {
   fi
 
   : > "$probe_log" || return 1
-  chmod 600 "$probe_log" || {
+  chmod 644 "$probe_log" || {
     rm -f -- "$probe_log"
     return 1
   }

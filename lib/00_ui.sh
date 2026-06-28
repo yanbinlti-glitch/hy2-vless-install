@@ -73,9 +73,9 @@ hy2_log_dir_prepare() {
     dir="${TMPDIR:-/tmp}/hy2-vless-install"
   fi
 
-  if ! install -d -m 700 "$dir" 2>/dev/null; then
+  if ! install -d -m 755 "$dir" 2>/dev/null; then
     dir="${TMPDIR:-/tmp}/hy2-vless-install"
-    install -d -m 700 "$dir" 2>/dev/null || return 1
+    install -d -m 755 "$dir" 2>/dev/null || return 1
   fi
 
   HY2_LOG_DIR="$dir"
@@ -92,7 +92,7 @@ hy2_new_log_file() {
   local file="${HY2_LOG_DIR}/${name}.$(date +%Y%m%d-%H%M%S).$$.log"
 
   : > "$file" || return 1
-  chmod 600 "$file" 2>/dev/null || true
+  chmod 644 "$file" 2>/dev/null || true
 
   printf '%s\n' "$file"
 }
@@ -182,7 +182,7 @@ hy2_progress_run_shell_with_log() {
     local last_percent=1
 
     : > "$logfile" || return 1
-    chmod 600 "$logfile" 2>/dev/null || true
+    chmod 644 "$logfile" 2>/dev/null || true
 
     _hy2_color_defaults
 
@@ -321,7 +321,7 @@ jq_update_singbox_config() {
   if jq "$filter" "$config" >"$tmp" \
     && [[ -s "$tmp" ]] \
     && jq empty "$tmp" >/dev/null 2>&1; then
-    chmod 600 "$tmp" 2>/dev/null || true
+    chmod 644 "$tmp" 2>/dev/null || true
     mv -f -- "$tmp" "$config"
     return 0
   fi

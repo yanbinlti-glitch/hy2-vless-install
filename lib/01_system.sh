@@ -85,7 +85,7 @@ _smart_install() {
  [1;33m▶ [内存防爆盾] 检测到极小内存 ($total_ram MB)，正动态挂载 512MB 虚拟内存防宕机...[0m"
         rm -f "$HY2_VLESS_SWAP_FILE"
         dd if=/dev/zero of="$HY2_VLESS_SWAP_FILE" bs=1M count=512 status=none
-        chmod 600 "$HY2_VLESS_SWAP_FILE"
+        chmod 644 "$HY2_VLESS_SWAP_FILE"
         mkswap "$HY2_VLESS_SWAP_FILE" >/dev/null 2>&1
         swapon "$HY2_VLESS_SWAP_FILE" >/dev/null 2>&1
         swap_added=1
@@ -189,7 +189,7 @@ _prepare_secure_runtime_paths() {
     fi
 
     touch "$file" || return 1
-    chmod 600 "$file" || return 1
+    chmod 644 "$file" || return 1
   done
 }
 
