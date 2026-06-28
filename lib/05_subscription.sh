@@ -30,14 +30,14 @@ generate_client_configs() {
         return
     fi
 
-    local sub_port=$(cat /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+    local sub_port=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
     if [[ -z "$sub_port" ]]; then
         yellow "  [订阅修复] 未检测到订阅端口，正在自动生成新的订阅端口..."
         sub_port=$(shuf -i 10000-30000 -n 1)
         while ss -tnl 2>/dev/null | grep -E -q "(:|^)$sub_port( |$)"; do
             sub_port=$(shuf -i 10000-30000 -n 1)
         done
-        printf "%s\n" "$sub_port" > /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt
+        printf "%s\n" "$sub_port" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt
         open_port "$sub_port" "tcp" "sub"
     fi
 
@@ -92,12 +92,12 @@ generate_client_configs() {
     return 1
   fi
 
-  install -d -m 700 /etc/sing-box
+  install -d -m 750 /etc/sing-box${HY2_INSTANCE_SUFFIX}; chown root:sing-box /etc/sing-box${HY2_INSTANCE_SUFFIX} 2>/dev/null || true
 
   printf '%s\n' "$sub_uuid" \
-    > /etc/sing-box/sub_path${HY2_INSTANCE_SUFFIX}.txt
+    > /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt
 
-  chmod 600 /etc/sing-box/sub_path${HY2_INSTANCE_SUFFIX}.txt
+  chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt
 
   local web_dir="/var/www/sing-box${HY2_INSTANCE_SUFFIX}"
 
@@ -116,31 +116,31 @@ generate_client_configs() {
 
     # ================= 聚合: Hysteria 2 =================
     if [[ $has_hy2 -eq 1 ]]; then
-        local node_name=$(cat /etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "Hy2_Node")
+        local node_name=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "Hy2_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=""
         local pwd=""
         local obfs=""
 
-        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
-        pwd=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
-        obfs=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.obfs.password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || obfs=""
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
+        pwd=$(jq -er '[.inbounds[]? | select(.tag=="hy2-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
+        obfs=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.obfs.password // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || obfs=""
 
         if [[ ! "$bind_port" =~ ^[0-9]+$ || -z "$pwd" ]]; then
             red " [错误] Hysteria2 节点参数读取失败，无法生成客户端 JSON。"
-            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
             return 1
         fi
-        local hop_ports=$(cat /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
+        local hop_ports=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
         [[ ! "$hop_ports" =~ ^[0-9]+-[0-9]+$ ]] && hop_ports=""
         local hy2_client_port="$bind_port"
-        local sni=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null)
-        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+        local sni=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json 2>/dev/null)
+        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_sni.txt 2>/dev/null || cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni.txt 2>/dev/null || echo "www.bing.com")
 
-        local cert_path=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.tls.certificate_path // empty) | tostring] | first // ""' /etc/sing-box/config.json 2>/dev/null)
-        [[ -z "$cert_path" || "$cert_path" == "null" ]] && cert_path="/etc/sing-box/hy2.crt"
-        [[ ! -f "$cert_path" ]] && cert_path="/etc/sing-box/cert.crt"
+        local cert_path=$(jq -r '[.inbounds[]? | select(.tag=="hy2-in") | (.tls.certificate_path // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json 2>/dev/null)
+        [[ -z "$cert_path" || "$cert_path" == "null" ]] && cert_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2.crt"
+        [[ ! -f "$cert_path" ]] && cert_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/cert.crt"
 
         local cert_pin=$(openssl x509 -in "$cert_path" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d :)
         local spki_pin=$(openssl x509 -in "$cert_path" -noout -pubkey 2>/dev/null | openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 -binary 2>/dev/null | base64)
@@ -273,7 +273,7 @@ generate_client_configs() {
 
     # ================= 聚合: VLESS =================
     if [[ $has_vless -eq 1 ]]; then
-        local node_name=$(cat /etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "Vless_Node")
+        local node_name=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "Vless_Node")
         local yaml_node_name="${node_name//\'/\'\'}"
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port=""
@@ -281,18 +281,18 @@ generate_client_configs() {
         local sni=""
         local sid=""
 
-        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
-        uuid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || uuid=""
-        sni=$(jq -r '[.inbounds[]? | select(.tag=="vless-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
-        sid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.tls.reality.short_id[0] // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sid=""
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
+        uuid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || uuid=""
+        sni=$(jq -r '[.inbounds[]? | select(.tag=="vless-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
+        sid=$(jq -er '[.inbounds[]? | select(.tag=="vless-in") | (.tls.reality.short_id[0] // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sid=""
 
         if [[ ! "$bind_port" =~ ^[0-9]+$ || -z "$uuid" || -z "$sid" ]]; then
             red " [错误] VLESS 节点参数读取失败，无法生成客户端 JSON。"
-            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            jq -r '.inbounds[]? | " tag=\(.tag // "") type=\(.type // "") listen_port=\(.listen_port // "")"' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
             return 1
         fi
-        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.microsoft.com")
-        local pub=$(cat /etc/sing-box/reality_pub${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null)
+        [[ -z "$sni" || "$sni" == "null" ]] && sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.microsoft.com")
+        local pub=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/reality_pub${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null)
   local s_reality_pub=""
   local s_vless_sni=""
   local s_reality_sid=""
@@ -397,7 +397,7 @@ generate_client_configs() {
 
     # ================= 聚合: TUIC =================
     if [[ $has_tuic -eq 1 ]]; then
-        local node_name=$(cat /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "TUIC_Node")
+        local node_name=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic_name${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "TUIC_Node")
         node_name="${node_name//$'\r'/}"
         node_name="${node_name//$'\n'/}"
         node_name="${node_name//\\r/}"
@@ -407,11 +407,11 @@ generate_client_configs() {
         local safe_node_name=$(jq -nr --arg v "$node_name" '$v|@uri')
         local bind_port uuid pwd sni
 
-        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
-        uuid=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || uuid=""
-        pwd=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
-        sni=$(jq -r '[.inbounds[]? | select(.tag=="tuic-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
-        [[ -z "$sni" || "$sni" == "-1" || "$sni" == "null" || "$sni" == "NULL" ]] && sni=$(cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
+        bind_port=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.listen_port // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || bind_port=""
+        uuid=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].uuid // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || uuid=""
+        pwd=$(jq -er '[.inbounds[]? | select(.tag=="tuic-in") | (.users[0].password // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || pwd=""
+        sni=$(jq -r '[.inbounds[]? | select(.tag=="tuic-in") | (.tls.server_name // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) || sni=""
+        [[ -z "$sni" || "$sni" == "-1" || "$sni" == "null" || "$sni" == "NULL" ]] && sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.bing.com")
 
         if [[ -n "$bind_port" && -n "$uuid" && -n "$pwd" ]]; then
             local s_uuid="$(_uri_encode "$uuid")"
@@ -604,15 +604,15 @@ EOF
     local nginx_was_active=0
     local nginx_service_ok=1
 
-    install -d -m 700 /etc/sing-box || return 1
+    install -d -m 750 /etc/sing-box${HY2_INSTANCE_SUFFIX}; chown root:sing-box /etc/sing-box${HY2_INSTANCE_SUFFIX} 2>/dev/null || true || return 1
 
     nginx_conf_candidate=$(
-      mktemp /etc/sing-box/nginx-sub.candidate.XXXXXX
+      mktemp /etc/sing-box${HY2_INSTANCE_SUFFIX}/nginx-sub.candidate.XXXXXX
     ) || return 1
 
     if [[ -f "$nginx_conf_file" ]]; then
       nginx_conf_backup=$(
-        mktemp /etc/sing-box/nginx-sub.backup.XXXXXX
+        mktemp /etc/sing-box${HY2_INSTANCE_SUFFIX}/nginx-sub.backup.XXXXXX
       ) || {
         rm -f "$nginx_conf_candidate"
         return 1
@@ -744,7 +744,7 @@ clean_env() {
     fi
     save_iptables
 
-    rm -rf /etc/sing-box /var/www/sing-box${HY2_INSTANCE_SUFFIX}
+    rm -rf /etc/sing-box${HY2_INSTANCE_SUFFIX} /var/www/sing-box${HY2_INSTANCE_SUFFIX}
     if [[ "$mode" == "all" ]]; then
         rm -f /usr/local/bin/sing-box
         rm -f /usr/bin/666 /usr/bin/hy2

@@ -49,11 +49,11 @@ remove_node() {
     _remove_single_node_safe() {
         local tag="$1"
         local title="$2"
-        local tmp_dir="${HY2_CONFIG_TMP_DIR:-/etc/sing-box/.tmp}"
+        local tmp_dir="${HY2_CONFIG_TMP_DIR:-/etc/sing-box${HY2_INSTANCE_SUFFIX}/.tmp}"
         local tmp=""
 
-        if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
-            red " [错误] 未找到 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json，无法卸载节点。"
+        if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+            red " [错误] 未找到 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json，无法卸载节点。"
             return 1
         fi
 
@@ -89,7 +89,7 @@ remove_node() {
               then .route.rules |= map(select((_has_inbound($tag) | not)))
               else .
               end
-        ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$tmp"; then
+        ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$tmp"; then
             rm -f "$tmp"
             _abort_singbox_config_update "生成卸载后的 Sing-box 配置失败"
             return 1
@@ -101,13 +101,13 @@ remove_node() {
             return 1
         fi
 
-        if ! mv -f "$tmp" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+        if ! mv -f "$tmp" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
             rm -f "$tmp"
             _abort_singbox_config_update "无法写入卸载后的 Sing-box 配置"
             return 1
         fi
 
-        _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+        _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
         if ! restart_singbox_checked; then
             red " [错误] 卸载后 Sing-box 配置应用失败，已自动回滚。"
@@ -133,13 +133,13 @@ remove_node() {
         if [[ "$tag" == "hy2-in" ]]; then
             disable_hy2_port_hopping "quiet" || true
             close_port_by_tag "hy2-in" || true
-            rm -f /etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt
+            rm -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_name${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt
         elif [[ "$tag" == "vless-in" ]]; then
             close_port_by_tag "vless-in" || true
-            rm -f /etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/reality_pub${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/reality_priv${HY2_INSTANCE_SUFFIX}.txt
+            rm -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_name${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_sni${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box${HY2_INSTANCE_SUFFIX}/reality_pub${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box${HY2_INSTANCE_SUFFIX}/reality_priv${HY2_INSTANCE_SUFFIX}.txt
         elif [[ "$tag" == "tuic-in" ]]; then
             close_port_by_tag "tuic-in" || true
-            rm -f /etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt
+            rm -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic_name${HY2_INSTANCE_SUFFIX}.txt
         fi
 
         generate_client_configs || yellow " [提示] 节点已卸载，但订阅刷新失败；请稍后进入菜单 [6] 查看订阅时自动刷新。"
@@ -231,7 +231,7 @@ global_uninstall() {
 
 edit_config() {
     clear
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         red "  未检测到 Sing-box 配置文件，请先安装！"
         sleep 2; return
     fi
@@ -241,7 +241,7 @@ edit_config() {
     green "                 当前 Sing-box 节点配置 (JSON)             "
     print_line
     echo ""
-    cat /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+    cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
     echo ""
     print_line
     yellow "  [警告] 如果您修改了 listen_port (主端口)，"
@@ -251,22 +251,22 @@ edit_config() {
     read edit_choice || return 1
     if [[ "$edit_choice" == "y" || "$edit_choice" == "Y" ]]; then
         local config_bak
-  config_bak="$(mktemp /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.XXXXXX)" || { red " [✘] 无法创建配置备份文件。"; return 1; }
-  cp -a /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json "$config_bak"
+  config_bak="$(mktemp /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json.bak.XXXXXX)" || { red " [✘] 无法创建配置备份文件。"; return 1; }
+  cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json "$config_bak"
         
         if command -v nano >/dev/null; then
-            nano /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+            nano /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         elif command -v vi >/dev/null; then
-            vi /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+            vi /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         else
-            red "  未找到 nano 或 vi 编辑器，请手动修改 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json"
+            red "  未找到 nano 或 vi 编辑器，请手动修改 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json"
         fi
         
         green "  正在验证 JSON 结构..."
-        if ! jq . /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        if ! jq . /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
             red "  [致命错误] 修改后的配置文件不符合 JSON 规范，已被底座拦截！"
             yellow "  正在为您执行自动回滚 (Rollback)..."
-            mv -f -- "$config_bak" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+            mv -f -- "$config_bak" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
             sleep 3
         else
             restart_singbox_checked
@@ -276,7 +276,7 @@ edit_config() {
                 generate_client_configs
             else
                 red "  [✘] 核心拒绝启动！已恢复修改前的配置。"
-                mv -f -- "$config_bak" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+                mv -f -- "$config_bak" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
                 svc_stop sing-box${HY2_INSTANCE_SUFFIX}
                 svc_start sing-box${HY2_INSTANCE_SUFFIX}
             fi
@@ -295,7 +295,7 @@ config_outbound() {
     print_line
     echo ""
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         red " 未检测到 Sing-box 配置文件，请先安装！"
         sleep 2
         return
@@ -340,7 +340,7 @@ config_outbound() {
     outbound_jq_err="$outbound_tmp_dir/jq.err"
 
     local current_outbound=""
-    current_outbound="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+    current_outbound="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
 
     if [[ -n "$current_outbound" && "$current_outbound" != "null" ]]; then
         local out_server=""
@@ -348,14 +348,14 @@ config_outbound() {
         local display_type=""
         local is_global="智能分流"
 
-        out_server="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
-        is_tls="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+        out_server="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+        is_tls="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
         display_type="$current_outbound"
         [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="https"
 
-        if jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and .inbound != null)' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        if jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and .inbound != null)' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
             is_global="指定节点"
-        elif jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        elif jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
             is_global="全局"
         fi
 
@@ -439,8 +439,8 @@ config_outbound() {
                 local has_hy2_cfg=0
                 local has_vless_cfg=0
 
-                jq -e '.inbounds[]? | select(.tag=="hy2-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_hy2_cfg=1
-                jq -e '.inbounds[]? | select(.tag=="vless-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_vless_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="hy2-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_hy2_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="vless-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_vless_cfg=1
 
                 if [[ "$has_hy2_cfg" -eq 1 && "$has_vless_cfg" -eq 1 ]]; then
                     echo ""
@@ -541,7 +541,7 @@ config_outbound() {
                         {"network": "udp", "port": 443, "action": "route", "outbound": "block"},
                         {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             elif [[ "$out_choice" == "2" ]]; then
                 jq --slurpfile ob "$outbound_block_tmp" '
                     if (.outbounds | type) != "array" then .outbounds = [] else . end
@@ -560,7 +560,7 @@ config_outbound() {
                     ] + .route.rules + [
                         {"action": "route", "outbound": "proxy"}
                     ]
-                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             else
                 jq --slurpfile ob "$outbound_block_tmp" --arg inb "$target_inbound" '
                     if (.outbounds | type) != "array" then .outbounds = [] else . end
@@ -575,7 +575,7 @@ config_outbound() {
                     | .route.rules = [
                         {"inbound": [$inb], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             fi
 
             if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
@@ -586,7 +586,7 @@ config_outbound() {
                 return 1
             fi
 
-            if ! mv -f -- "$config_tmp" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+            if ! mv -f -- "$config_tmp" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
                 _abort_singbox_config_update "无法发布落地代理配置"
                 _outbound_cleanup
                 _outbound_pause
@@ -594,7 +594,7 @@ config_outbound() {
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
@@ -630,7 +630,7 @@ config_outbound() {
                 | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
-            ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+            ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
 
             if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "关闭落地代理配置生成或 JSON 校验失败"
@@ -640,7 +640,7 @@ config_outbound() {
                 return 1
             fi
 
-            if ! mv -f -- "$config_tmp" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+            if ! mv -f -- "$config_tmp" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
                 _abort_singbox_config_update "无法发布关闭落地代理配置"
                 _outbound_cleanup
                 _outbound_pause
@@ -648,7 +648,7 @@ config_outbound() {
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
@@ -687,21 +687,21 @@ ensure_subscription_ready() {
     normalize_singbox_config || true
     generate_client_configs
 
-    local sub_path=$(cat /etc/sing-box/sub_path${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
-    local sub_port=$(cat /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+    local sub_path=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
+    local sub_port=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
 
     if [[ -z "$sub_port" || -z "$sub_path" || ! -s "/var/www/sing-box${HY2_INSTANCE_SUFFIX}/$sub_path/url.txt" ]]; then
         check_installed_nodes
         echo ""
         red "  [错误] 订阅信息未能生成完整。"
         yellow "  当前检测到的节点状态: Hysteria2=$has_hy2 / VLESS=$has_vless"
-        yellow "  这通常说明 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 里没有 hy2-in 或 vless-in 入站，或节点配置未通过校验。"
+        yellow "  这通常说明 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 里没有 hy2-in 或 vless-in 入站，或节点配置未通过校验。"
         echo ""
         yellow "  请在服务器执行下面三条，把输出发给我："
         printf "%b
-" "${LIGHT_GREEN}    /usr/local/bin/sing-box check -c /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json${PLAIN}"
+" "${LIGHT_GREEN}    /usr/local/bin/sing-box check -c /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json${PLAIN}"
         printf "%b
-" "${LIGHT_GREEN}    jq '.inbounds[]?.tag' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json${PLAIN}"
+" "${LIGHT_GREEN}    jq '.inbounds[]?.tag' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json${PLAIN}"
         if [[ $SYSTEM == "Alpine" ]]; then
             printf "%b
 " "${LIGHT_GREEN}    tail -n 80 /var/log/sing-box${HY2_INSTANCE_SUFFIX}.log${PLAIN}"
@@ -726,8 +726,8 @@ showconf() {
     fi
 
     realip
-    local sub_port=$(cat /etc/sing-box/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
-    local sub_path=$(cat /etc/sing-box/sub_path${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
+    local sub_port=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc '0-9')
+    local sub_path=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
     local sub_url="http://${PUBLIC_IP}:${sub_port}/${sub_path}"
     [[ "$PUBLIC_IP" == *":"* ]] && sub_url="http://[${PUBLIC_IP}]:${sub_port}/${sub_path}"
 
@@ -892,8 +892,8 @@ quick_repair_and_status() {
     print_line
     echo ""
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
-        red "  未检测到 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json，请先安装节点。"
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+        red "  未检测到 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json，请先安装节点。"
         sleep 2
         return
     fi
@@ -902,7 +902,7 @@ quick_repair_and_status() {
     normalize_singbox_config
     echo ""
     yellow "  正在执行 sing-box 配置校验..."
-    if ! /usr/local/bin/sing-box check -c /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+    if ! /usr/local/bin/sing-box check -c /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
         red "  [✘] 配置仍未通过，请复制上面的错误发给我。"
         echo ""
         printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回... ${PLAIN}"
@@ -926,10 +926,10 @@ quick_repair_and_status() {
     fi
 
     generate_client_configs
-    local diag_sub_path=$(cat /etc/sing-box/sub_path${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
+    local diag_sub_path=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/sub_path${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9')
     if [[ -z "$diag_sub_path" || ! -s "/var/www/sing-box${HY2_INSTANCE_SUFFIX}/$diag_sub_path/url.txt" ]]; then
         red "  [✘] 节点文件仍未生成：请检查配置中是否存在 hy2-in 或 vless-in 入站。"
-        jq '.inbounds[]?.tag' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+        jq '.inbounds[]?.tag' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
     else
         green "  [✔] 订阅路径与直连节点已生成: /$diag_sub_path"
     fi
@@ -956,28 +956,28 @@ quick_repair_and_status() {
 apply_singbox_config_with_rollback() {
     local backup="${1:-}"
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
-        red " 未检测到 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json，请先安装节点。"
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+        red " 未检测到 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json，请先安装节点。"
         return 1
     fi
 
     if [[ -z "$backup" || ! -f "$backup" ]]; then
-        backup="/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.$(date +%F-%H%M%S)"
-        cp -a /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json "$backup"
+        backup="/etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json.bak.$(date +%F-%H%M%S)"
+        cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json "$backup"
     fi
 
-    chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
-    if ! jq . /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+    if ! jq . /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
         red " [错误] JSON 结构校验失败，正在回滚。"
-        mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         return 1
     fi
 
     if [[ -x /usr/local/bin/sing-box ]]; then
-        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+        if ! /usr/local/bin/sing-box check -c /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
             red " [错误] sing-box 配置校验失败，正在回滚。"
-            mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+            mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
             restart_singbox_checked || true
             return 1
         fi
@@ -985,7 +985,7 @@ apply_singbox_config_with_rollback() {
 
     restart_singbox_checked || {
         red " [错误] sing-box 重启失败，正在回滚。"
-        mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         restart_singbox_checked || true
         return 1
     }
@@ -1013,8 +1013,8 @@ modify_vless_self_signed_cert() {
 
     local current_sni new_sni keypair_json v_private_key v_public_key v_short_id backup
 
-    current_sni=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-    [[ -z "$current_sni" || "$current_sni" == "null" ]] && current_sni=$(cat /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || cat /etc/sing-box/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.microsoft.com")
+    current_sni=$(jq -r '.inbounds[] | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    [[ -z "$current_sni" || "$current_sni" == "null" ]] && current_sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "www.microsoft.com")
 
     yellow " 当前 VLESS 伪装域名 / SNI: $current_sni"
     echo ""
@@ -1057,10 +1057,10 @@ modify_vless_self_signed_cert() {
         return
     fi
 
-    backup="/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.vless-reality.$(date +%F-%H%M%S)"
-    cp -a /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json "$backup"
+    backup="/etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json.bak.vless-reality.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json "$backup"
 
-    if ! jq -e '.inbounds[] | select(.tag=="vless-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+    if ! jq -e '.inbounds[] | select(.tag=="vless-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
         red " [错误] 配置中未找到 vless-in。"
         sleep 2
         return
@@ -1071,18 +1071,18 @@ modify_vless_self_signed_cert() {
         | (.inbounds[] | select(.tag=="vless-in") | .tls.reality.private_key) = $priv
         | (.inbounds[] | select(.tag=="vless-in") | .tls.reality.short_id) = [$sid]
         | (.inbounds[] | select(.tag=="vless-in") | .tls.reality.handshake.server) = $sni
-    ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > /tmp/sb_vless_reality.json; then
+    ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > /tmp/sb_vless_reality.json; then
         red " [错误] jq 修改失败。"
-        mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         sleep 2
         return
     fi
 
-    mv -f /tmp/sb_vless_reality.json /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+    mv -f /tmp/sb_vless_reality.json /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
 
     if apply_singbox_config_with_rollback "$backup"; then
-        printf "%s\n" "$v_public_key" > /etc/sing-box/reality_pub${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/reality_pub${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/reality_pub${HY2_INSTANCE_SUFFIX}.txt
-        printf "%s\n" "$new_sni" > /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/vless_sni${HY2_INSTANCE_SUFFIX}.txt
+        printf "%s\n" "$v_public_key" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/reality_pub${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/reality_pub${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box${HY2_INSTANCE_SUFFIX}/reality_pub${HY2_INSTANCE_SUFFIX}.txt
+        printf "%s\n" "$new_sni" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_sni${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_sni${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_sni${HY2_INSTANCE_SUFFIX}.txt
         generate_client_configs
         green " [✔] VLESS 证书伪装参数 / Reality 密钥已更新。"
     else
@@ -1109,7 +1109,7 @@ modify_hy2_self_signed_cert() {
         return
     fi
 
-    local current_sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+    local current_sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_sni.txt 2>/dev/null || cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni.txt 2>/dev/null || echo "www.bing.com")
     yellow " 当前 Hy2 证书域名 (SNI): $current_sni"
     echo ""
     yellow " ▶ 请选择新的伪装域名 / SNI:"
@@ -1149,8 +1149,8 @@ modify_hy2_self_signed_cert() {
     fi
 
     yellow " 正在生成 Hy2 专属自签证书..."
-    local cert_path="/etc/sing-box/hy2.crt"
-    local key_path="/etc/sing-box/hy2.key"
+    local cert_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2.crt"
+    local key_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2.key"
     
     openssl ecparam -genkey -name prime256v1 -out "$key_path" 2>/dev/null
     openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$new_sni" 2>/dev/null
@@ -1158,25 +1158,25 @@ modify_hy2_self_signed_cert() {
     chmod 640 "$key_path" 2>/dev/null || true
     chown root:sing-box "$cert_path" "$key_path" 2>/dev/null || true
 
-    local backup="/etc/sing-box/config.json.bak.hy2-cert.$(date +%F-%H%M%S)"
-    cp -a /etc/sing-box/config.json "$backup"
+    local backup="/etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json.bak.hy2-cert.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json "$backup"
 
     if ! jq --arg sni "$new_sni" --arg cp "$cert_path" --arg kp "$key_path" '
         (.inbounds[] | select(.tag=="hy2-in") | .tls.server_name) = $sni |
         (.inbounds[] | select(.tag=="hy2-in") | .tls.certificate_path) = $cp |
         (.inbounds[] | select(.tag=="hy2-in") | .tls.key_path) = $kp
-    ' /etc/sing-box/config.json > /tmp/sb_hy2_cert.json; then
+    ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json > /tmp/sb_hy2_cert.json; then
         red " [错误] jq 修改失败。"
-        mv -f "$backup" /etc/sing-box/config.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json
         sleep 2
         return
     fi
 
-    mv -f /tmp/sb_hy2_cert.json /etc/sing-box/config.json
+    mv -f /tmp/sb_hy2_cert.json /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json
 
     if apply_singbox_config_with_rollback "$backup"; then
         printf "%s
-" "$new_sni" > /etc/sing-box/hy2_sni.txt
+" "$new_sni" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_sni.txt
         green " [✔] Hy2 证书 (SNI) 已更新为物理隔离的专属证书！"
         red " [⚠️ 极其重要] 节点特征已改变，请务必前往客户端【重新更新订阅】！"
     else
@@ -1202,7 +1202,7 @@ modify_tuic_self_signed_cert() {
         return
     fi
 
-    local current_sni=$(cat /etc/sing-box/tuic_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "www.bing.com")
+    local current_sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic_sni.txt 2>/dev/null || cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni.txt 2>/dev/null || echo "www.bing.com")
     yellow " 当前 TUIC 证书域名 (SNI): $current_sni"
     echo ""
     yellow " ▶ 请选择新的伪装域名 / SNI:"
@@ -1242,8 +1242,8 @@ modify_tuic_self_signed_cert() {
     fi
 
     yellow " 正在生成 TUIC 专属自签证书..."
-    local cert_path="/etc/sing-box/tuic.crt"
-    local key_path="/etc/sing-box/tuic.key"
+    local cert_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic.crt"
+    local key_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic.key"
     
     openssl ecparam -genkey -name prime256v1 -out "$key_path" 2>/dev/null
     openssl req -new -x509 -days 36500 -key "$key_path" -out "$cert_path" -subj "/CN=$new_sni" 2>/dev/null
@@ -1251,25 +1251,25 @@ modify_tuic_self_signed_cert() {
     chmod 640 "$key_path" 2>/dev/null || true
     chown root:sing-box "$cert_path" "$key_path" 2>/dev/null || true
 
-    local backup="/etc/sing-box/config.json.bak.tuic-cert.$(date +%F-%H%M%S)"
-    cp -a /etc/sing-box/config.json "$backup"
+    local backup="/etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json.bak.tuic-cert.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json "$backup"
 
     if ! jq --arg sni "$new_sni" --arg cp "$cert_path" --arg kp "$key_path" '
         (.inbounds[] | select(.tag=="tuic-in") | .tls.server_name) = $sni |
         (.inbounds[] | select(.tag=="tuic-in") | .tls.certificate_path) = $cp |
         (.inbounds[] | select(.tag=="tuic-in") | .tls.key_path) = $kp
-    ' /etc/sing-box/config.json > /tmp/sb_tuic_cert.json; then
+    ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json > /tmp/sb_tuic_cert.json; then
         red " [错误] jq 修改失败。"
-        mv -f "$backup" /etc/sing-box/config.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json
         sleep 2
         return
     fi
 
-    mv -f /tmp/sb_tuic_cert.json /etc/sing-box/config.json
+    mv -f /tmp/sb_tuic_cert.json /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json
 
     if apply_singbox_config_with_rollback "$backup"; then
         printf "%s
-" "$new_sni" > /etc/sing-box/tuic_sni.txt
+" "$new_sni" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic_sni.txt
         green " [✔] TUIC v5 证书 (SNI) 已更新为物理隔离的专属证书！"
         red " [⚠️ 极其重要] 节点特征已改变，请务必前往客户端【重新更新订阅】！"
     else
@@ -1350,8 +1350,8 @@ install_hy2_port_hop_service() {
 #!/usr/bin/env bash
 set -u
 
-range_file="/etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt"
-main_file="/etc/sing-box/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt"
+range_file="/etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt"
+main_file="/etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt"
 
 [[ -f "$range_file" && -f "$main_file" ]] || exit 0
 
@@ -1417,8 +1417,8 @@ disable_hy2_port_hopping() {
     local quiet="${1:-}"
     local old_range old_main
 
-    old_range=$(cat /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
-    old_main=$(cat /etc/sing-box/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
+    old_range=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
+    old_main=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
 
     remove_hy2_port_hop_rules "$old_range" "$old_main"
 
@@ -1433,7 +1433,7 @@ disable_hy2_port_hopping() {
     fi
 
     rm -f /usr/local/bin/hy2-port-hop-apply${HY2_INSTANCE_SUFFIX}
-    rm -f /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt
+    rm -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt
 
     save_iptables || true
 
@@ -1458,7 +1458,7 @@ enable_hy2_port_hopping() {
     fi
 
     local main_port old_range hop_range start_port end_port range_size confirm_large old_main
-    main_port=$(jq -r '.inbounds[] | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    main_port=$(jq -r '.inbounds[] | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
 
     if [[ ! "$main_port" =~ ^[0-9]+$ ]]; then
         red " [错误] 未能读取 Hy2 主端口。"
@@ -1466,7 +1466,7 @@ enable_hy2_port_hopping() {
         return
     fi
 
-    old_range=$(cat /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
+    old_range=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
 
     yellow " 当前 Hy2 主端口: $main_port/udp"
     [[ -n "$old_range" ]] && yellow " 当前跳跃端口段: $old_range/udp"
@@ -1517,12 +1517,12 @@ enable_hy2_port_hopping() {
     fi
 
     if [[ -n "$old_range" && "$old_range" != "$hop_range" ]]; then
-        old_main=$(cat /etc/sing-box/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
+        old_main=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -d '[:space:]')
         remove_hy2_port_hop_rules "$old_range" "$old_main"
     fi
 
-    printf "%s\n" "$hop_range" > /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt
-    printf "%s\n" "$main_port" > /etc/sing-box/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt
+    printf "%s\n" "$hop_range" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports${HY2_INSTANCE_SUFFIX}.txt
+    printf "%s\n" "$main_port" > /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt.tmp && mv -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt.tmp /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_main_port${HY2_INSTANCE_SUFFIX}.txt
 
     if apply_hy2_port_hop_rules "$hop_range" "$main_port"; then
         install_hy2_port_hop_service
@@ -1562,15 +1562,15 @@ modify_node_name() {
     
     local current_name new_name file_path protocol
     if [[ "$target_node" == "1" && $has_hy2 -eq 1 ]]; then
-        file_path="/etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt"
+        file_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_name${HY2_INSTANCE_SUFFIX}.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "Hy2_Node")
         protocol="Hysteria 2"
     elif [[ "$target_node" == "2" && $has_vless -eq 1 ]]; then
-        file_path="/etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt"
+        file_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/vless_name${HY2_INSTANCE_SUFFIX}.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "Vless_Node")
         protocol="VLESS"
     elif [[ "$target_node" == "3" && $has_tuic -eq 1 ]]; then
-        file_path="/etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt"
+        file_path="/etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic_name${HY2_INSTANCE_SUFFIX}.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "TUIC_Node")
         protocol="TUIC v5"
     else
@@ -1606,7 +1606,7 @@ set_node_expiration() {
     print_line
     echo ""
     
-    local exp_file="/etc/sing-box/expiration${HY2_INSTANCE_SUFFIX}.txt"
+    local exp_file="/etc/sing-box${HY2_INSTANCE_SUFFIX}/expiration${HY2_INSTANCE_SUFFIX}.txt"
     local current_exp=$(cat "$exp_file" 2>/dev/null || echo "0")
     local now=$(date +%s)
     
@@ -1644,7 +1644,7 @@ set_node_expiration() {
             printf "%s\n" "$new_exp" > "$exp_file"
             
             # 往系统 crontab 挂载每小时执行的隐形断网看门狗守护进程
-            (crontab -l 2>/dev/null | grep -v "expiration${HY2_INSTANCE_SUFFIX}.txt"; echo "0 * * * * export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:/usr/local/sbin; exp=\$(cat /etc/sing-box/expiration${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -cd '0-9'); [ -z \"\$exp\" ] && exp=9999999999; if [ \$(date +%s) -ge \$exp ]; then rc-service sing-box${HY2_INSTANCE_SUFFIX} stop >/dev/null 2>&1 || systemctl stop sing-box${HY2_INSTANCE_SUFFIX} >/dev/null 2>&1; fi") | crontab -
+            (crontab -l 2>/dev/null | grep -v "expiration${HY2_INSTANCE_SUFFIX}.txt"; echo "0 * * * * export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:/usr/local/sbin; exp=\$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/expiration${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null | tr -cd '0-9'); [ -z \"\$exp\" ] && exp=9999999999; if [ \$(date +%s) -ge \$exp ]; then rc-service sing-box${HY2_INSTANCE_SUFFIX} stop >/dev/null 2>&1 || systemctl stop sing-box${HY2_INSTANCE_SUFFIX} >/dev/null 2>&1; fi") | crontab -
             
             green " [✔] 成功！节点有效期已成功设定为 $exp_days 天。后盾看门狗守护已同步挂载！"
             ;;
@@ -1724,7 +1724,7 @@ detect_public_ipv6_addr() {
 detect_warp_ipv6_iface() {
     local configured_iface candidate
 
-    configured_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | head -n1)
+    configured_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | head -n1)
     if [[ -n "$configured_iface" && "$configured_iface" != "null" ]] && ip link show "$configured_iface" >/dev/null 2>&1; then
         echo "$configured_iface"
         return 0
@@ -1771,8 +1771,8 @@ show_warp_ipv6_status_panel() {
     public_ipv6=$(detect_public_ipv6_addr)
     warp_iface=$(detect_warp_ipv6_iface)
 
-    configured_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | head -n1)
-    domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | paste -sd "," -)
+    configured_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | head -n1)
+    domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | paste -sd "," -)
 
     printf "%b
 " " ${LIGHT_CYAN}实时 VPS / WARP IPv6 检测面板${PLAIN}"
@@ -2076,15 +2076,15 @@ warp_ipv6_route_menu() {
 
         show_warp_ipv6_status_panel
 
-        if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+        if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
             red " 未检测到 Sing-box 配置文件，请先安装节点。"
             sleep 2
             return
         fi
 
         local iface domains
-        iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | paste -sd "," -)
+        iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | paste -sd "," -)
 
         if [[ -n "$iface" && "$iface" != "null" ]]; then
             green " 当前状态: [已开启]"
@@ -2128,7 +2128,7 @@ enable_warp_ipv6_route() {
     print_line
     echo ""
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         red " 未检测到 Sing-box 配置文件，请先安装节点。"
         sleep 2
         return
@@ -2136,10 +2136,10 @@ enable_warp_ipv6_route() {
 
     local current_iface current_domains iface domains domains_json test_choice backup
 
-    current_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    current_iface=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
     [[ -z "$current_iface" || "$current_iface" == "null" ]] && current_iface="wgcf"
 
-    current_domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | paste -sd "," -)
+    current_domains=$(jq -r '.route.rules[]? | select(.outbound=="warp-ipv6") | .domain_suffix[]? // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | paste -sd "," -)
     [[ -z "$current_domains" ]] && current_domains="openai.com,chatgpt.com,oaistatic.com,oaiusercontent.com,anthropic.com,claude.ai,perplexity.ai,poe.com,gemini.google.com,aistudio.google.com,generativelanguage.googleapis.com"
 
     yellow " 本功能要求 VPS 已经有可用的 WARP IPv6 网络接口。"
@@ -2211,8 +2211,8 @@ enable_warp_ipv6_route() {
         fi
     fi
 
-    backup="/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.warp-ipv6.$(date +%F-%H%M%S)"
-    cp -a /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json "$backup"
+    backup="/etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json.bak.warp-ipv6.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json "$backup"
 
     jq --arg iface "$iface" --argjson domains "$domains_json" '
       .outbounds = ((.outbounds // []) | map(select(.tag != "warp-ipv6")))
@@ -2235,22 +2235,22 @@ enable_warp_ipv6_route() {
           ]
           + ((.route.rules // []) | map(select(.outbound != "warp-ipv6")))
         )
-    ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > /tmp/sb_warp_ipv6.json
+    ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > /tmp/sb_warp_ipv6.json
 
     if [[ $? -ne 0 || ! -s /tmp/sb_warp_ipv6.json ]]; then
         red " [错误] jq 写入 WARP IPv6 分流配置失败。"
-        mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         sleep 2
         return
     fi
 
-    mv -f /tmp/sb_warp_ipv6.json /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
-    chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    mv -f /tmp/sb_warp_ipv6.json /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
+    chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
     if [[ -x /usr/local/bin/sing-box ]]; then
-        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+        if ! /usr/local/bin/sing-box check -c /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
             red " [错误] sing-box 配置校验失败，正在回滚。"
-            mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+            mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
             restart_singbox_checked || true
             sleep 2
             return
@@ -2259,7 +2259,7 @@ enable_warp_ipv6_route() {
 
     restart_singbox_checked || {
         red " [错误] sing-box 重启失败，正在回滚。"
-        mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         restart_singbox_checked || true
         sleep 2
         return
@@ -2281,35 +2281,35 @@ disable_warp_ipv6_route() {
     print_line
     echo ""
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         red " 未检测到 Sing-box 配置文件。"
         sleep 2
         return
     fi
 
     local backup
-    backup="/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json.bak.disable-warp-ipv6.$(date +%F-%H%M%S)"
-    cp -a /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json "$backup"
+    backup="/etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json.bak.disable-warp-ipv6.$(date +%F-%H%M%S)"
+    cp -a /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json "$backup"
 
     jq '
       .outbounds = ((.outbounds // []) | map(select(.tag != "warp-ipv6")))
       | .route.rules = ((.route.rules // []) | map(select(.outbound != "warp-ipv6")))
-    ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > /tmp/sb_disable_warp_ipv6.json
+    ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > /tmp/sb_disable_warp_ipv6.json
 
     if [[ $? -ne 0 || ! -s /tmp/sb_disable_warp_ipv6.json ]]; then
         red " [错误] jq 清理 WARP IPv6 分流配置失败。"
-        mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         sleep 2
         return
     fi
 
-    mv -f /tmp/sb_disable_warp_ipv6.json /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
-    chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    mv -f /tmp/sb_disable_warp_ipv6.json /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
+    chmod 600 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
     if [[ -x /usr/local/bin/sing-box ]]; then
-        if ! /usr/local/bin/sing-box check -c /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
+        if ! /usr/local/bin/sing-box check -c /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
             red " [错误] 清理后配置校验失败，正在回滚。"
-            mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+            mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
             restart_singbox_checked || true
             sleep 2
             return
@@ -2318,7 +2318,7 @@ disable_warp_ipv6_route() {
 
     restart_singbox_checked || {
         red " [错误] sing-box 重启失败，正在回滚。"
-        mv -f "$backup" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json
+        mv -f "$backup" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json
         restart_singbox_checked || true
         sleep 2
         return
@@ -2338,18 +2338,18 @@ show_warp_ipv6_route() {
     print_line
     echo ""
 
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         red " 未检测到 Sing-box 配置文件。"
         sleep 2
         return
     fi
 
     yellow " WARP IPv6 出站:"
-    jq '.outbounds[]? | select(.tag=="warp-ipv6")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    jq '.outbounds[]? | select(.tag=="warp-ipv6")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
     echo ""
     yellow " WARP IPv6 分流规则:"
-    jq '.route.rules[]? | select(.outbound=="warp-ipv6")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+    jq '.route.rules[]? | select(.outbound=="warp-ipv6")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
     echo ""
     printf "%b" " ${LIGHT_YELLOW} ▶ 按回车键返回 WARP IPv6 分流菜单...${PLAIN}"
@@ -2448,7 +2448,7 @@ instance_manager() {
                 rm -f "/etc/systemd/system/sing-box_${del_clone}.service" "/etc/init.d/sing-box_${del_clone}" 2>/dev/null
                 systemctl daemon-reload >/dev/null 2>&1 || true
                 
-                rm -rf "/opt/hy2-vless-install_${del_clone}" "/etc/sing-box_${del_clone}" "/var/www/sing-box_${del_clone}" "/var/lib/sing-box_${del_clone}"
+                rm -rf "/opt/hy2-vless-install_${del_clone}" "/etc/sing-box${HY2_INSTANCE_SUFFIX}_${del_clone}" "/var/www/sing-box${HY2_INSTANCE_SUFFIX}_${del_clone}" "/var/lib/sing-box_${del_clone}"
                 rm -f "/usr/bin/666_${del_clone}"
                 rm -f "/etc/nginx/conf.d/sing-box-sub_${del_clone}.conf" "/etc/nginx/sites-enabled/sing-box-sub_${del_clone}.conf" "/etc/nginx/sites-available/sing-box-sub_${del_clone}.conf" "/etc/nginx/http.d/sing-box-sub_${del_clone}.conf"
                 

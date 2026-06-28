@@ -306,16 +306,16 @@ run_quiet() {
 
 jq_update_singbox_config() {
   local filter="$1"
-  local config="${2:-/etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json}"
-  local tmp_dir="${HY2_CONFIG_TMP_DIR:-/etc/sing-box/.tmp}"
+  local config="${2:-/etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json}"
+  local tmp_dir="${HY2_CONFIG_TMP_DIR:-/etc/sing-box${HY2_INSTANCE_SUFFIX}/.tmp}"
   local tmp=""
 
-  if [[ -L /etc/sing-box || -L "$tmp_dir" ]]; then
+  if [[ -L /etc/sing-box${HY2_INSTANCE_SUFFIX} || -L "$tmp_dir" ]]; then
     red " [✘] 配置目录不能是符号链接，已拒绝写入。"
     return 1
   fi
 
-  install -d -m 700 /etc/sing-box "$tmp_dir" 2>/dev/null || return 1
+  install -d -m 750 /etc/sing-box${HY2_INSTANCE_SUFFIX}; chown root:sing-box /etc/sing-box${HY2_INSTANCE_SUFFIX} 2>/dev/null || true "$tmp_dir" 2>/dev/null || return 1
   tmp="$(mktemp "$tmp_dir/sb_patch.XXXXXX.json")" || return 1
 
   if jq "$filter" "$config" >"$tmp" \

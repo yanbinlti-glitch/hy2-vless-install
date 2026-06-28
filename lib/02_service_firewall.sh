@@ -43,7 +43,7 @@ save_iptables() {
     fi
 }
 
-FIREWALL_STATE="/etc/sing-box/.firewall_state"
+FIREWALL_STATE="/etc/sing-box${HY2_INSTANCE_SUFFIX}/.firewall_state"
 
 _validate_firewall_args() {
   local port="${1:-}"
@@ -61,7 +61,7 @@ _validate_firewall_args() {
 }
 
 _firewall_state_init() {
-  install -d -m 700 /etc/sing-box
+  install -d -m 750 /etc/sing-box${HY2_INSTANCE_SUFFIX}; chown root:sing-box /etc/sing-box${HY2_INSTANCE_SUFFIX} 2>/dev/null || true
   touch "$FIREWALL_STATE"
   chmod 600 "$FIREWALL_STATE"
 }
@@ -370,7 +370,7 @@ close_port_by_tag() {
 
   tmp_state="$(
     mktemp \
-      /etc/sing-box/.firewall_state.tmp.XXXXXX
+      /etc/sing-box${HY2_INSTANCE_SUFFIX}/.firewall_state.tmp.XXXXXX
   )" || return 1
 
   chmod 600 "$tmp_state"

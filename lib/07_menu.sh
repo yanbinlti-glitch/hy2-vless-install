@@ -122,7 +122,7 @@ main_status_get_public_ipv6() {
 main_status_get_warp_iface() {
     local configured candidate
 
-    configured=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | head -n1)
+    configured=$(jq -r '.outbounds[]? | select(.tag=="warp-ipv6") | .bind_interface // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null | head -n1)
     if [[ -n "$configured" && "$configured" != "null" ]] && ip link show "$configured" >/dev/null 2>&1; then
         echo "$configured"
         return 0
@@ -176,14 +176,14 @@ main_status_detect_virtualization() {
 main_status_show_node_info() {
     local hy2_port hy2_sni hy2_hop vless_port vless_sni vless_flow tuic_port tuic_sni
 
-    if [[ ! -f /etc/sing-box/config.json ]] || ! command -v jq >/dev/null 2>&1; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json ]] || ! command -v jq >/dev/null 2>&1; then
         yellow " 节点安装信息: 未检测到配置文件"
         return 0
     fi
 
-    hy2_port=$(jq -r '.inbounds[]? | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
-    vless_port=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
-    tuic_port=$(jq -r '.inbounds[]? | select(.tag=="tuic-in") | .listen_port // empty' /etc/sing-box/config.json 2>/dev/null)
+    hy2_port=$(jq -r '.inbounds[]? | select((.tag // "")=="hy2-in" or (.type // "")=="hysteria2") | .listen_port // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json 2>/dev/null)
+    vless_port=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .listen_port // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json 2>/dev/null)
+    tuic_port=$(jq -r '.inbounds[]? | select(.tag=="tuic-in") | .listen_port // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json 2>/dev/null)
 
     if [[ -z "$hy2_port" && -z "$vless_port" && -z "$tuic_port" ]]; then
         yellow " 节点安装信息: 未检测到任何节点入站 (Hy2 / VLESS / TUIC)"
@@ -194,8 +194,8 @@ main_status_show_node_info() {
 " " ${LIGHT_CYAN}Sing-box 节点安装信息:${PLAIN}"
 
     if [[ -n "$vless_port" && "$vless_port" != "null" ]]; then
-        vless_sni=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box/config.json 2>/dev/null)
-        vless_flow=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .users[0].flow // empty' /etc/sing-box/config.json 2>/dev/null)
+        vless_sni=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .tls.server_name // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json 2>/dev/null)
+        vless_flow=$(jq -r '.inbounds[]? | select(.tag=="vless-in") | .users[0].flow // empty' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config.json 2>/dev/null)
         [[ -z "$vless_sni" || "$vless_sni" == "null" ]] && vless_sni="未读取"
         [[ -z "$vless_flow" || "$vless_flow" == "null" ]] && vless_flow="xtls-rprx-vision"
         printf "%b
@@ -203,15 +203,15 @@ main_status_show_node_info() {
     fi
 
     if [[ -n "$hy2_port" && "$hy2_port" != "null" ]]; then
-        hy2_sni=$(cat /etc/sing-box/hy2_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
-        hy2_hop=$(cat /etc/sing-box/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
+        hy2_sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_sni.txt 2>/dev/null || cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni.txt 2>/dev/null || echo "未读取")
+        hy2_hop=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/hy2_hop_ports.txt 2>/dev/null | tr -d '[:space:]')
         [[ -z "$hy2_hop" ]] && hy2_hop="未开启"
         printf "%b
 " " ${LIGHT_GREEN} ✔ [ Hysteria-2   ]${PLAIN} 端口:${LIGHT_YELLOW}${hy2_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${hy2_sni}${PLAIN}  跳跃端口:${LIGHT_YELLOW}${hy2_hop}${PLAIN}"
     fi
 
     if [[ -n "$tuic_port" && "$tuic_port" != "null" ]]; then
-        tuic_sni=$(cat /etc/sing-box/tuic_sni.txt 2>/dev/null || cat /etc/sing-box/cert_sni.txt 2>/dev/null || echo "未读取")
+        tuic_sni=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/tuic_sni.txt 2>/dev/null || cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/cert_sni.txt 2>/dev/null || echo "未读取")
         printf "%b
 " " ${LIGHT_GREEN} ✔ [ TUIC v5      ]${PLAIN} 端口:${LIGHT_YELLOW}${tuic_port}${PLAIN}  证书域名:${LIGHT_YELLOW}${tuic_sni}${PLAIN}  拥塞控制:${LIGHT_YELLOW}bbr${PLAIN}"
     fi
@@ -276,11 +276,11 @@ _menu_fetch_geo() {
 }
 
 main_status_landing_info() {
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         echo "未知"
         return
     fi
-    local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
     if [[ -z "$has_proxy" || "$has_proxy" == "null" ]]; then
         local geo=$(_menu_fetch_geo 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
@@ -302,13 +302,13 @@ main_status_landing_info() {
         local p_pass=""
         local p_tls=""
 
-        p_type=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_server=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_port=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_user=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.username // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_pass=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.password // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_tls=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) 
-        local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && echo "全局" || echo "分流")
+        p_type=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_server=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_port=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server_port // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_user=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.username // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_pass=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.password // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_tls=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) 
+        local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && echo "全局" || echo "分流")
         
         local proxy_url=""
         local proto_prefix="socks5h"
@@ -342,12 +342,12 @@ main_status_landing_info() {
 
 
 main_status_landing_ip() {
-    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]] || ! command -v jq >/dev/null 2>&1; then
+    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]] || ! command -v jq >/dev/null 2>&1; then
         echo "未知 (未部署节点)"
         return
     fi
     
-    local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    local has_proxy=$(jq -r '.outbounds[] | select(.tag=="proxy") | .type' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
     if [[ -z "$has_proxy" || "$has_proxy" == "null" ]]; then
         local geo=$(_menu_fetch_geo 2>/dev/null)
         local status=$(echo "$geo" | jq -r '.status' 2>/dev/null)
@@ -369,13 +369,13 @@ main_status_landing_ip() {
         local p_pass=""
         local p_tls=""
 
-        p_type=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_server=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_port=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server_port // empty) | tostring] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_user=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.username // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_pass=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.password // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-        p_tls=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) 
-        local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && echo "全局" || echo "智能分流")
+        p_type=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_server=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_port=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server_port // empty) | tostring] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_user=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.username // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_pass=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.password // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+        p_tls=$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null) 
+        local is_global=$(jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null))' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && echo "全局" || echo "智能分流")
         
         local proxy_url=""
         local proto_prefix="socks5h"
@@ -482,12 +482,12 @@ main_realtime_status_panel() {
     # 动态探测中转模式
     local target_inbound=""
     local out_mode="未开启"
-    if jq -e '.route.rules[] | select(.outbound=="proxy" and .inbound != null)' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+    if jq -e '.route.rules[] | select(.outbound=="proxy" and .inbound != null)' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
         out_mode="指定节点"
-        target_inbound=$(jq -r '.route.rules[] | select(.outbound=="proxy" and .inbound != null) | .inbound[]' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
-    elif jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        target_inbound=$(jq -r '.route.rules[] | select(.outbound=="proxy" and .inbound != null) | .inbound[]' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)
+    elif jq -e '.route.rules[] | select(.outbound=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
         out_mode="全局中转"
-    elif jq -e '.route.rules[] | select(.outbound=="proxy")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+    elif jq -e '.route.rules[] | select(.outbound=="proxy")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
         out_mode="智能分流"
     fi
 
@@ -541,7 +541,7 @@ main_realtime_status_panel() {
         fi
     fi
     # --- 租期看门狗倒计时高精渲染引擎 ---
-    local exp_time=$(cat /etc/sing-box/expiration${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "0")
+    local exp_time=$(cat /etc/sing-box${HY2_INSTANCE_SUFFIX}/expiration${HY2_INSTANCE_SUFFIX}.txt 2>/dev/null || echo "0")
     if [[ "$exp_time" -gt 0 ]]; then
         local now_ts=$(date +%s)
         if [[ "$now_ts" -ge "$exp_time" ]]; then
