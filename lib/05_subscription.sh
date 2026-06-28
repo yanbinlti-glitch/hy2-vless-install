@@ -181,12 +181,14 @@ generate_client_configs() {
 
         proxy_yaml="${proxy_yaml}
   - name: '${yaml_node_name}'
+
     type: hysteria2
     udp: true
     server: \"$yaml_json_ip\"
     port: $bind_port
     $(if [[ -n "$hop_ports" ]]; then printf 'ports: "%s"' "$hop_ports"; fi)
     password: '${yaml_pwd}'
+
     sni: \"$sni\"
     skip-cert-verify: true
     alpn:
@@ -216,12 +218,12 @@ generate_client_configs() {
               {
                 type: "hysteria2",
                 tag: $tag,
-                server: '$server',
+                server: $server,
                 server_port: ($port | tonumber),
-                password: '$password',
+                password: $password,
                 tls: {
                   enabled: true,
-                  server_name: '$sni',
+                  server_name: $sni,
                   insecure: true,
                   certificate_public_key_sha256: [
                     $spki_pin
@@ -243,6 +245,7 @@ generate_client_configs() {
                   obfs: {
                     type: "salamander",
                     password: '$obfs'
+
                   }
                 }
                 else {}
@@ -317,6 +320,7 @@ generate_client_configs() {
 
         proxy_yaml="${proxy_yaml}
   - name: '${yaml_node_name}'
+
     type: vless
     server: \"$yaml_json_ip\"
     port: $bind_port
@@ -351,15 +355,15 @@ generate_client_configs() {
               {
                 type: "vless",
                 tag: $tag,
-                server: '$server',
+                server: $server,
                 server_port: ($port | tonumber),
-                uuid: '$uuid',
+                uuid: $uuid,
                 flow: "xtls-rprx-vision",
                 packet_encoding: "xudp",
                 tcp_fast_open: true,
                 tls: {
                   enabled: true,
-                  server_name: '$sni',
+                  server_name: $sni,
                   utls: {
                     enabled: true,
                     fingerprint: "chrome"
@@ -442,14 +446,14 @@ generate_client_configs() {
                 '{
                     type: "tuic",
                     tag: $tag,
-                    server: '$server',
+                    server: $server,
                     server_port: ($port | tonumber),
-                    uuid: '$uuid',
-                    password: '$password',
+                    uuid: $uuid,
+                    password: $password,
                     congestion_control: "bbr",
                     tls: {
                         enabled: true,
-                        server_name: '$sni',
+                        server_name: $sni,
                         insecure: true,
                         alpn: ["h3"]
                     }
