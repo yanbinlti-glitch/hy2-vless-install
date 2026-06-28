@@ -291,11 +291,11 @@ config_outbound() {
     clear
     echo ""
     print_line
-    green " Sing-box 落地代理与分流 (IP 中转) 设置 "
+    green " Sing-box 落地代理与分流 (IP / 链式中转) 设置 "
     print_line
     echo ""
 
-    if [[ ! -f /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json ]]; then
+    if [[ ! -f /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json ]]; then
         red " 未检测到 Sing-box 配置文件，请先安装！"
         sleep 2
         return
@@ -340,7 +340,7 @@ config_outbound() {
     outbound_jq_err="$outbound_tmp_dir/jq.err"
 
     local current_outbound=""
-    current_outbound="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+    current_outbound="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.type // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
 
     if [[ -n "$current_outbound" && "$current_outbound" != "null" ]]; then
         local out_server=""
@@ -348,18 +348,22 @@ config_outbound() {
         local display_type=""
         local is_global="智能分流"
 
-        out_server="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
-        is_tls="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
-        display_type="$current_outbound"
-        [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="https"
+        out_server="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.server // empty)] | first // ""' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+        is_tls="$(jq -r '[.outbounds[]? | select(.tag=="proxy") | (.tls.enabled // false)] | first // false' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null)"
+        display_type="${current_outbound^^}"
+        
+        [[ "$current_outbound" == "http" && "$is_tls" == "true" ]] && display_type="HTTPS"
+        [[ "$current_outbound" == "hysteria2" ]] && display_type="Hysteria 2 (链式隧道)"
+        [[ "$current_outbound" == "vless" ]] && display_type="VLESS (链式隧道)"
+        [[ "$current_outbound" == "tuic" ]] && display_type="TUIC v5 (链式隧道)"
 
-        if jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and .inbound != null)' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        if jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and .inbound != null)' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
             is_global="指定节点"
-        elif jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
+        elif jq -e '.route.rules[]? | select((.outbound // "")=="proxy" and (.domain_suffix == null and .domain == null and .ip_cidr == null and .inbound == null))' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1; then
             is_global="全局"
         fi
 
-        yellow " 当前状态: [已开启] 落地代理模式 (类型: ${display_type^^} | 目标: $out_server | 模式: $is_global)"
+        yellow " 当前状态: [已开启] 落地代理模式 (类型: ${display_type} | 目标: $out_server | 模式: $is_global)"
     else
         green " 当前状态: [未开启] 本机 IP 直连输出"
     fi
@@ -382,10 +386,13 @@ config_outbound() {
         1|2|3)
             echo ""
             yellow " ▶ 请选择落地代理协议类型:"
-            printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (默认)"
+            printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} SOCKS5 (基础代理 IP)"
             printf "%b\n" " ${LIGHT_GREEN}[2]${PLAIN} HTTP"
             printf "%b\n" " ${LIGHT_GREEN}[3]${PLAIN} HTTPS (HTTP + TLS)"
-            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-3] (默认1): ${PLAIN}"
+            printf "%b\n" " ${LIGHT_GREEN}[4]${PLAIN} Hysteria 2 (高级链式代理 / 服务器无缝互联)"
+            printf "%b\n" " ${LIGHT_GREEN}[5]${PLAIN} VLESS + Reality (高级链式代理 / 服务器无缝互联)"
+            printf "%b\n" " ${LIGHT_GREEN}[6]${PLAIN} TUIC v5 (高级链式代理 / 服务器无缝互联)"
+            printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-6] (默认1): ${PLAIN}"
             read proxy_type_choice || proxy_type_choice=1
             [[ -z "$proxy_type_choice" ]] && proxy_type_choice=1
 
@@ -393,111 +400,232 @@ config_outbound() {
             local proxy_tls="false"
 
             case "$proxy_type_choice" in
-                2)
-                    proxy_type="http"
-                    proxy_tls="false"
-                    ;;
-                3)
-                    proxy_type="http"
-                    proxy_tls="true"
-                    ;;
-                *)
-                    proxy_type="socks"
-                    proxy_tls="false"
-                    ;;
+                2) proxy_type="http"; proxy_tls="false" ;;
+                3) proxy_type="http"; proxy_tls="true" ;;
+                4) proxy_type="hysteria2"; proxy_tls="true" ;;
+                5) proxy_type="vless"; proxy_tls="true" ;;
+                6) proxy_type="tuic"; proxy_tls="true" ;;
+                *) proxy_type="socks"; proxy_tls="false" ;;
             esac
 
             echo ""
             yellow " ▶ 请输入落地代理节点信息:"
-            printf "%b" " ${LIGHT_YELLOW} ▶ IP 或 域名: ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ IP 或 域名 (落地机 IP): ${PLAIN}"
             read proxy_addr || proxy_addr=""
             if [[ -z "$proxy_addr" ]]; then
                 red " [错误] IP 或域名不能为空。"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
 
-            printf "%b" " ${LIGHT_YELLOW} ▶ 端口: ${PLAIN}"
+            printf "%b" " ${LIGHT_YELLOW} ▶ 端口 (落地机端口): ${PLAIN}"
             read proxy_port || proxy_port=""
             if [[ ! "$proxy_port" =~ ^[0-9]+$ ]] || [ "$proxy_port" -lt 1 ] || [ "$proxy_port" -gt 65535 ]; then
                 red " [错误] 端口格式无效！请输入 1-65535。"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
 
-            printf "%b" " ${LIGHT_YELLOW} ▶ 用户名 (留空为无鉴权): ${PLAIN}"
-            read proxy_user || proxy_user=""
+            local proxy_user="" proxy_pass="" proxy_uuid="" proxy_sni="" reality_pub="" reality_sid=""
 
-            printf "%b" " ${LIGHT_YELLOW} ▶ 密码 (留空为无鉴权): ${PLAIN}"
-            read proxy_pass || proxy_pass=""
+            # 根据协议分发不同的参数收集表单
+            if [[ "$proxy_type" == "tuic" || "$proxy_type" == "vless" || "$proxy_type" == "hysteria2" ]]; then
+                if [[ "$proxy_type" == "tuic" || "$proxy_type" == "vless" ]]; then
+                    printf "%b" " ${LIGHT_YELLOW} ▶ 落地机 UUID: ${PLAIN}"
+                    read proxy_uuid || proxy_uuid=""
+                    if [[ -z "$proxy_uuid" ]]; then
+                        red " [错误] UUID 不能为空。"
+                        _outbound_cleanup; _outbound_pause; return 1
+                    fi
+                fi
+                if [[ "$proxy_type" == "tuic" || "$proxy_type" == "hysteria2" ]]; then
+                    printf "%b" " ${LIGHT_YELLOW} ▶ 落地机 Password (密码): ${PLAIN}"
+                    read proxy_pass || proxy_pass=""
+                fi
+                printf "%b" " ${LIGHT_YELLOW} ▶ 落地机 SNI 伪装域名 [留空默认 www.bing.com]: ${PLAIN}"
+                read proxy_sni || proxy_sni="www.bing.com"
+                [[ -z "$proxy_sni" ]] && proxy_sni="www.bing.com"
+                
+                if [[ "$proxy_type" == "vless" ]]; then
+                    yellow " (以下为 Reality 参数，若落地机为本脚本搭建，请务必填写；普通 VLESS 留空即可)"
+                    printf "%b" " ${LIGHT_YELLOW} ▶ 落地机 Reality Public Key: ${PLAIN}"
+                    read reality_pub || reality_pub=""
+                    if [[ -n "$reality_pub" ]]; then
+                        printf "%b" " ${LIGHT_YELLOW} ▶ 落地机 Reality Short ID: ${PLAIN}"
+                        read reality_sid || reality_sid=""
+                    fi
+                fi
+            else
+                printf "%b" " ${LIGHT_YELLOW} ▶ 用户名 (留空为无鉴权): ${PLAIN}"
+                read proxy_user || proxy_user=""
+                printf "%b" " ${LIGHT_YELLOW} ▶ 密码 (留空为无鉴权): ${PLAIN}"
+                read proxy_pass || proxy_pass=""
+            fi
 
             local target_inbound=""
 
             if [[ "$out_choice" == "3" ]]; then
-                local has_hy2_cfg=0
-                local has_vless_cfg=0
+                # 动态扫描当前配置文件的协议开启状态，TUIC 不再被遗忘
+                local has_hy2_cfg=0 has_vless_cfg=0 has_tuic_cfg=0
 
-                jq -e '.inbounds[]? | select(.tag=="hy2-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_hy2_cfg=1
-                jq -e '.inbounds[]? | select(.tag=="vless-in")' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_vless_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="hy2-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_hy2_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="vless-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_vless_cfg=1
+                jq -e '.inbounds[]? | select(.tag=="tuic-in")' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json >/dev/null 2>&1 && has_tuic_cfg=1
 
-                if [[ "$has_hy2_cfg" -eq 1 && "$has_vless_cfg" -eq 1 ]]; then
-                    echo ""
-                    yellow " ▶ 请选择要中转的节点:"
-                    printf "%b\n" " ${LIGHT_GREEN}[1]${PLAIN} 仅中转 Hysteria 2"
-                    printf "%b\n" " ${LIGHT_GREEN}[2]${PLAIN} 仅中转 VLESS"
-                    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项 [1-2]: ${PLAIN}"
-                    read inbound_choice || inbound_choice=1
-
-                    if [[ "$inbound_choice" == "2" ]]; then
-                        target_inbound="vless-in"
-                    else
-                        target_inbound="hy2-in"
-                    fi
-                elif [[ "$has_hy2_cfg" -eq 1 ]]; then
-                    target_inbound="hy2-in"
-                elif [[ "$has_vless_cfg" -eq 1 ]]; then
-                    target_inbound="vless-in"
-                else
+                if [[ "$has_hy2_cfg" -eq 0 && "$has_vless_cfg" -eq 0 && "$has_tuic_cfg" -eq 0 ]]; then
                     red " [错误] 未检测到任何节点入站！"
-                    _outbound_cleanup
-                    _outbound_pause
-                    return 1
+                    _outbound_cleanup; _outbound_pause; return 1
+                fi
+
+                echo ""
+                yellow " ▶ 请选择要走中转的本地节点:"
+                local opt_idx=1
+                local -A opt_map
+                
+                if [[ "$has_hy2_cfg" -eq 1 ]]; then
+                    printf "%b\n" " ${LIGHT_GREEN}[${opt_idx}]${PLAIN} 仅中转 Hysteria 2"
+                    opt_map[$opt_idx]="hy2-in"
+                    ((opt_idx++))
+                fi
+                if [[ "$has_vless_cfg" -eq 1 ]]; then
+                    printf "%b\n" " ${LIGHT_GREEN}[${opt_idx}]${PLAIN} 仅中转 VLESS"
+                    opt_map[$opt_idx]="vless-in"
+                    ((opt_idx++))
+                fi
+                if [[ "$has_tuic_cfg" -eq 1 ]]; then
+                    printf "%b\n" " ${LIGHT_GREEN}[${opt_idx}]${PLAIN} 仅中转 TUIC v5"
+                    opt_map[$opt_idx]="tuic-in"
+                    ((opt_idx++))
+                fi
+
+                printf "%b" " ${LIGHT_YELLOW} ▶ 请输入选项: ${PLAIN}"
+                read inbound_choice || inbound_choice=1
+                
+                target_inbound="${opt_map[$inbound_choice]}"
+                if [[ -z "$target_inbound" ]]; then
+                    target_inbound="${opt_map[1]}"
                 fi
             fi
 
             echo ""
-            yellow " 正在生成落地代理 outbound 对象..."
+            yellow " 正在生成落地代理 outbound 路由对象..."
 
-            if ! jq \
-                --arg type "$proxy_type" \
-                --arg tls "$proxy_tls" \
-                --arg addr "$proxy_addr" \
-                --arg port "$proxy_port" \
-                --arg user "$proxy_user" \
-                --arg pass "$proxy_pass" \
-                '
-                {
-                    type: $type,
-                    tag: "proxy",
-                    server: $addr,
-                    server_port: ($port | tonumber),
-                    tcp_fast_open: true
-                }
-                | if $type == "socks" then . + { version: "5" } else . end
-                | if $user != "" then . + { username: $user, password: $pass } else . end
-                | if $tls == "true" then . + { tls: { enabled: true, server_name: $addr, insecure: true } } else . end
-                ' \
-                <<<'{}' \
-                > "$outbound_block_tmp" \
-                2>"$outbound_jq_err"
-            then
-                red " [错误] 无法生成落地代理对象。"
-                [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+            if [[ "$proxy_type" == "tuic" ]]; then
+                if ! jq \
+                    --arg type "$proxy_type" \
+                    --arg addr "$proxy_addr" \
+                    --arg port "$proxy_port" \
+                    --arg uuid "$proxy_uuid" \
+                    --arg pass "$proxy_pass" \
+                    --arg sni "$proxy_sni" \
+                    '
+                    {
+                        type: $type,
+                        tag: "proxy",
+                        server: $addr,
+                        server_port: ($port | tonumber),
+                        uuid: $uuid,
+                        password: $pass,
+                        congestion_control: "bbr",
+                        udp_relay_mode: "native",
+                        tls: {
+                            enabled: true,
+                            server_name: $sni,
+                            insecure: true,
+                            alpn: ["h3"]
+                        }
+                    }
+                    ' <<<'{}' > "$outbound_block_tmp" 2>"$outbound_jq_err"
+                then
+                    red " [错误] 无法生成 TUIC 落地代理对象。"
+                    [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
+                    _outbound_cleanup; _outbound_pause; return 1
+                fi
+            elif [[ "$proxy_type" == "hysteria2" ]]; then
+                if ! jq \
+                    --arg type "$proxy_type" \
+                    --arg addr "$proxy_addr" \
+                    --arg port "$proxy_port" \
+                    --arg pass "$proxy_pass" \
+                    --arg sni "$proxy_sni" \
+                    '
+                    {
+                        type: $type,
+                        tag: "proxy",
+                        server: $addr,
+                        server_port: ($port | tonumber),
+                        password: $pass,
+                        up_mbps: 0,
+                        down_mbps: 0,
+                        tls: {
+                            enabled: true,
+                            server_name: $sni,
+                            insecure: true
+                        }
+                    }
+                    ' <<<'{}' > "$outbound_block_tmp" 2>"$outbound_jq_err"
+                then
+                    red " [错误] 无法生成 Hysteria 2 落地代理对象。"
+                    [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
+                    _outbound_cleanup; _outbound_pause; return 1
+                fi
+            elif [[ "$proxy_type" == "vless" ]]; then
+                if ! jq \
+                    --arg type "$proxy_type" \
+                    --arg addr "$proxy_addr" \
+                    --arg port "$proxy_port" \
+                    --arg uuid "$proxy_uuid" \
+                    --arg sni "$proxy_sni" \
+                    --arg pub "$reality_pub" \
+                    --arg sid "$reality_sid" \
+                    '
+                    {
+                        type: $type,
+                        tag: "proxy",
+                        server: $addr,
+                        server_port: ($port | tonumber),
+                        uuid: $uuid,
+                        flow: "xtls-rprx-vision",
+                        tls: {
+                            enabled: true,
+                            server_name: $sni,
+                            insecure: true,
+                            utls: {
+                                enabled: true,
+                                fingerprint: "chrome"
+                            }
+                        }
+                    }
+                    | if $pub != "" then .tls += {reality: {enabled: true, public_key: $pub, short_id: $sid}} else . end
+                    ' <<<'{}' > "$outbound_block_tmp" 2>"$outbound_jq_err"
+                then
+                    red " [错误] 无法生成 VLESS 落地代理对象。"
+                    [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
+                    _outbound_cleanup; _outbound_pause; return 1
+                fi
+            else
+                if ! jq \
+                    --arg type "$proxy_type" \
+                    --arg tls "$proxy_tls" \
+                    --arg addr "$proxy_addr" \
+                    --arg port "$proxy_port" \
+                    --arg user "$proxy_user" \
+                    --arg pass "$proxy_pass" \
+                    '
+                    {
+                        type: $type,
+                        tag: "proxy",
+                        server: $addr,
+                        server_port: ($port | tonumber),
+                        tcp_fast_open: true
+                    }
+                    | if $type == "socks" then . + { version: "5" } else . end
+                    | if $user != "" then . + { username: $user, password: $pass } else . end
+                    | if $tls == "true" then . + { tls: { enabled: true, server_name: $addr, insecure: true } } else . end
+                    ' <<<'{}' > "$outbound_block_tmp" 2>"$outbound_jq_err"
+                then
+                    red " [错误] 无法生成落地代理对象。"
+                    [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
+                    _outbound_cleanup; _outbound_pause; return 1
+                fi
             fi
 
             if ! jq -e '
@@ -507,23 +635,19 @@ config_outbound() {
                 and (.server | length > 0)
                 and (.server_port | type == "number")
                 and (.server_port >= 1 and .server_port <= 65535)
-                and ((.type == "socks") or (.type == "http"))
+                and ((.type == "socks") or (.type == "http") or (.type == "tuic") or (.type == "hysteria2") or (.type == "vless"))
             ' "$outbound_block_tmp" >/dev/null 2>&1; then
                 red " [错误] 生成的落地代理对象结构无效。"
                 cat "$outbound_block_tmp" 2>/dev/null || true
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
 
             if ! _begin_singbox_config_transaction; then
                 red " [错误] 无法创建落地代理配置事务备份。"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
 
-            yellow " 正在写入 Sing-box 落地代理配置..."
+            yellow " 正在装配链式底层路由引擎..."
             : > "$outbound_jq_err"
 
             if [[ "$out_choice" == "1" ]]; then
@@ -541,7 +665,7 @@ config_outbound() {
                         {"network": "udp", "port": 443, "action": "route", "outbound": "block"},
                         {"domain_suffix": ["netflix.com", "nflxvideo.net", "openai.com", "chatgpt.com", "disneyplus.com"], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             elif [[ "$out_choice" == "2" ]]; then
                 jq --slurpfile ob "$outbound_block_tmp" '
                     if (.outbounds | type) != "array" then .outbounds = [] else . end
@@ -560,7 +684,7 @@ config_outbound() {
                     ] + .route.rules + [
                         {"action": "route", "outbound": "proxy"}
                     ]
-                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             else
                 jq --slurpfile ob "$outbound_block_tmp" --arg inb "$target_inbound" '
                     if (.outbounds | type) != "array" then .outbounds = [] else . end
@@ -575,48 +699,40 @@ config_outbound() {
                     | .route.rules = [
                         {"inbound": [$inb], "action": "route", "outbound": "proxy"}
                     ] + .route.rules
-                ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+                ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
             fi
 
             if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "落地代理配置生成或 JSON 校验失败"
                 [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
 
-            if ! mv -f -- "$config_tmp" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
+            if ! mv -f -- "$config_tmp" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
                 _abort_singbox_config_update "无法发布落地代理配置"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
                 if is_svc_active sing-box${HY2_INSTANCE_SUFFIX}; then
-                    green " [✔] 重启成功！落地代理规则已全面生效。"
+                    green " [✔] 重启成功！极速全协议链式代理通道已全面生效。"
                 else
                     red " [✘] 新配置应用后服务未处于运行状态。"
                 fi
             else
                 red " [✘] 拦截生效：发现配置错误，已回滚以防断网。"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
             ;;
 
         4)
             if ! _begin_singbox_config_transaction; then
                 red " [错误] 无法创建关闭代理配置事务备份。"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
 
             yellow " 正在清除中转路由配置..."
@@ -630,34 +746,28 @@ config_outbound() {
                 | del(.route.rules[]? | select((.protocol // "")=="dns" and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.port // 0)==53 and (.outbound // "")=="direct"))
                 | del(.route.rules[]? | select((.network // "")=="udp" and (.port // 0)==443))
-            ' /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
+            ' /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json > "$config_tmp" 2>"$outbound_jq_err"
 
             if [[ ! -s "$config_tmp" ]] || ! jq empty "$config_tmp" >/dev/null 2>&1; then
                 _abort_singbox_config_update "关闭落地代理配置生成或 JSON 校验失败"
                 [[ -s "$outbound_jq_err" ]] && sed 's/^/ jq: /' "$outbound_jq_err" >&2
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
 
-            if ! mv -f -- "$config_tmp" /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json; then
+            if ! mv -f -- "$config_tmp" /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json; then
                 _abort_singbox_config_update "无法发布关闭落地代理配置"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
             config_tmp=""
 
-            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 644 /etc/sing-box${HY2_INSTANCE_SUFFIX}/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
+            _secure_singbox_runtime_permissions >/dev/null 2>&1 || chmod 600 /etc/sing-box/config${HY2_INSTANCE_SUFFIX}.json 2>/dev/null || true
 
             if restart_singbox_checked; then
                 sleep 1
                 green " [✔] 重启成功！已安全退回服务器本机 IP 直连输出模式。"
             else
                 red " [✘] 恢复失败：配置文件校验未通过，已回滚以防断网。"
-                _outbound_cleanup
-                _outbound_pause
-                return 1
+                _outbound_cleanup; _outbound_pause; return 1
             fi
             ;;
 
