@@ -184,12 +184,12 @@ generate_client_configs() {
 
     type: hysteria2
     udp: true
-    server: \"$yaml_json_ip\"
+    server: "$yaml_json_ip"
     port: $bind_port
     $(if [[ -n "$hop_ports" ]]; then printf 'ports: "%s"' "$hop_ports"; fi)
     password: '${yaml_pwd}'
 
-    sni: \"$sni\"
+    sni: "$sni"
     skip-cert-verify: true
     alpn:
       - h3"
@@ -218,9 +218,9 @@ generate_client_configs() {
               {
                 type: "hysteria2",
                 tag: $tag,
-                server: $server,
+                server: "$server,"
                 server_port: ($port | tonumber),
-                password: $password,
+                password: "$password,"
                 tls: {
                   enabled: true,
                   server_name: $sni,
@@ -244,7 +244,7 @@ generate_client_configs() {
                 then {
                   obfs: {
                     type: "salamander",
-                    password: '$obfs'
+                    password: "$obfs"
 
                   }
                 }
@@ -322,19 +322,19 @@ generate_client_configs() {
   - name: '${yaml_node_name}'
 
     type: vless
-    server: \"$yaml_json_ip\"
+    server: "$yaml_json_ip"
     port: $bind_port
-    uuid: \"$uuid\"
+    uuid: "$uuid"
     network: tcp
     tls: true
     udp: true
     xudp: true
     flow: xtls-rprx-vision
     servername: \"$sni\"
-    client-fingerprint: chrome
+    client-fingerprint: "chrome"
     reality-opts:
-      public-key: \"$pub\"
-      short-id: \"$sid\""
+      public-key: "$pub"
+      short-id: "$sid""
         
         proxy_names="${proxy_names}
       - '${yaml_node_name}'"
@@ -355,9 +355,9 @@ generate_client_configs() {
               {
                 type: "vless",
                 tag: $tag,
-                server: $server,
+                server: "$server,"
                 server_port: ($port | tonumber),
-                uuid: $uuid,
+                uuid: "$uuid,"
                 flow: "xtls-rprx-vision",
                 packet_encoding: "xudp",
                 tcp_fast_open: true,
@@ -446,10 +446,10 @@ generate_client_configs() {
                 '{
                     type: "tuic",
                     tag: $tag,
-                    server: $server,
+                    server: "$server,"
                     server_port: ($port | tonumber),
-                    uuid: $uuid,
-                    password: $password,
+                    uuid: "$uuid,"
+                    password: "$password,"
                     congestion_control: "bbr",
                     tls: {
                         enabled: true,
@@ -482,11 +482,11 @@ allow-lan: true
 mode: rule
 log-level: info
 ipv6: true
-proxies:$proxy_yaml
+proxies: $proxy_yaml
 proxy-groups:
   - name: "节点选择"
     type: select
-    proxies:$proxy_names
+    proxies: $proxy_names
       - DIRECT
 rules:
 $([[ "$yaml_json_ip" == *":"* ]] && echo "  - IP-CIDR6,$yaml_json_ip/128,DIRECT,no-resolve" || echo "  - IP-CIDR,$yaml_json_ip/32,DIRECT,no-resolve")
