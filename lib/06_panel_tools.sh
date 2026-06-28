@@ -2394,7 +2394,7 @@ instance_manager() {
                 [[ $pad_len -lt 1 ]] && pad_len=1
                 local pad_spaces=$(printf '%*s' "$pad_len" "")
                 
-                # 为双位数编号 (如 10) 预留对齐位
+                # 为双位数编号预留对齐位
                 local idx_str="$i"
                 [[ ${#idx_str} -eq 1 ]] && idx_str="$i "
                 
@@ -2429,13 +2429,32 @@ instance_manager() {
             cp -a /opt/hy2-vless-install "/opt/hy2-vless-install_${new_clone}"
             apply_clone_transform "$new_clone" "/opt/hy2-vless-install_${new_clone}"
             
+            # ========================================================
+            # 🚀 [核心优化] 强制解除权限封印，赋予分身最高系统权限
+            # ========================================================
+            yellow " 正在为分身注入最高运行权限 (Root Privilege Escalation)..."
+            
+            # 1. 物理修改分身脚本基因，杜绝 600/700 独裁权限，改为全局可读
+            sed -i 's/chmod 600/chmod 644/g' "/opt/hy2-vless-install_${new_clone}/lib/"*.sh 2>/dev/null || true
+            sed -i 's/chmod 600/chmod 644/g' "/opt/hy2-vless-install_${new_clone}/"*.sh 2>/dev/null || true
+            sed -i 's/install -d -m 700/install -d -m 755/g' "/opt/hy2-vless-install_${new_clone}/lib/"*.sh 2>/dev/null || true
+            sed -i 's/install -d -m 700/install -d -m 755/g' "/opt/hy2-vless-install_${new_clone}/"*.sh 2>/dev/null || true
+            
+            # 2. 如果分身的守护进程已经生成，强制篡改 User 为 root，绝不降权
+            if [[ -f "/etc/systemd/system/sing-box_${new_clone}.service" ]]; then
+                sed -i 's/^User=.*/User=root/g' "/etc/systemd/system/sing-box_${new_clone}.service" 2>/dev/null || true
+                sed -i 's/^Group=.*/Group=root/g' "/etc/systemd/system/sing-box_${new_clone}.service" 2>/dev/null || true
+                systemctl daemon-reload >/dev/null 2>&1 || true
+            fi
+            # ========================================================
+            
             # 使用最安全的 echo 写入，绝对不触发 Bash 变量膨胀 Bug
             echo '#!/usr/bin/env bash' > "/usr/bin/666_${new_clone}"
-            echo "cd "/opt/hy2-vless-install_${new_clone}" || exit 1" >> "/usr/bin/666_${new_clone}"
+            echo "cd \"/opt/hy2-vless-install_${new_clone}\" || exit 1" >> "/usr/bin/666_${new_clone}"
             echo 'exec bash "/opt/hy2-vless-install_'"${new_clone}"'/install.sh" "$@"' >> "/usr/bin/666_${new_clone}"
             chmod +x "/usr/bin/666_${new_clone}"
             
-            green " [✔] 分身 $new_clone 创建成功！已完全物理隔离！"
+            green " [✔] 分身 $new_clone 创建成功！已赋予最高物理读取权限！"
             yellow " [提示] 您可以使用 666_${new_clone} 直接启动分身面板。"
             sleep 3
         elif [[ "$ic_choice" == "d" || "$ic_choice" == "D" ]]; then
@@ -2448,7 +2467,7 @@ instance_manager() {
                 rm -f "/etc/systemd/system/sing-box_${del_clone}.service" "/etc/init.d/sing-box_${del_clone}" 2>/dev/null
                 systemctl daemon-reload >/dev/null 2>&1 || true
                 
-                rm -rf "/opt/hy2-vless-install_${del_clone}" "/etc/sing-box${HY2_INSTANCE_SUFFIX}_${del_clone}" "/var/www/sing-box${HY2_INSTANCE_SUFFIX}_${del_clone}" "/var/lib/sing-box_${del_clone}"
+                rm -rf "/opt/hy2-vless-install_${del_clone}" "/etc/sing-box_${del_clone}" "/var/www/sing-box_${del_clone}" "/var/lib/sing-box_${del_clone}"
                 rm -f "/usr/bin/666_${del_clone}"
                 rm -f "/etc/nginx/conf.d/sing-box-sub_${del_clone}.conf" "/etc/nginx/sites-enabled/sing-box-sub_${del_clone}.conf" "/etc/nginx/sites-available/sing-box-sub_${del_clone}.conf" "/etc/nginx/http.d/sing-box-sub_${del_clone}.conf"
                 
