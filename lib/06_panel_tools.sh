@@ -1546,7 +1546,7 @@ modify_node_name() {
     print_line
     echo ""
     check_installed_nodes
-    if [[ $has_hy2 -eq 0 && $has_vless -eq 0 ]]; then
+    if [[ $has_hy2 -eq 0 && $has_vless -eq 0 && $has_tuic -eq 0 ]]; then
         red " 未检测到任何已部署的节点！"
         sleep 2
         return
@@ -1554,26 +1554,23 @@ modify_node_name() {
 
     local target_node="0"
     yellow " 请选择要修改名称的节点："
-    [[ $has_hy2 -eq 1 ]] && printf "%b
-" "   ${LIGHT_GREEN}[1]${PLAIN} Hysteria 2"
-    [[ $has_vless -eq 1 ]] && printf "%b
-" "   ${LIGHT_GREEN}[2]${PLAIN} VLESS"
-    [[ $has_tuic -eq 1 ]] && printf "%b
-" "   ${LIGHT_GREEN}[3]${PLAIN} TUIC v5"
+    [[ $has_hy2 -eq 1 ]] && printf "%b\n" "   ${LIGHT_GREEN}[1]${PLAIN} Hysteria 2"
+    [[ $has_vless -eq 1 ]] && printf "%b\n" "   ${LIGHT_GREEN}[2]${PLAIN} VLESS"
+    [[ $has_tuic -eq 1 ]] && printf "%b\n" "   ${LIGHT_GREEN}[3]${PLAIN} TUIC v5"
     printf "%b" " ${LIGHT_YELLOW} ▶ 请选择: ${PLAIN}"
     read target_node
     
     local current_name new_name file_path protocol
     if [[ "$target_node" == "1" && $has_hy2 -eq 1 ]]; then
-        file_path="/etc/sing-box/hy2_name.txt"
+        file_path="/etc/sing-box/hy2_name${HY2_INSTANCE_SUFFIX}.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "Hy2_Node")
         protocol="Hysteria 2"
     elif [[ "$target_node" == "2" && $has_vless -eq 1 ]]; then
-        file_path="/etc/sing-box/vless_name.txt"
+        file_path="/etc/sing-box/vless_name${HY2_INSTANCE_SUFFIX}.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "Vless_Node")
         protocol="VLESS"
     elif [[ "$target_node" == "3" && $has_tuic -eq 1 ]]; then
-        file_path="/etc/sing-box/tuic_name.txt"
+        file_path="/etc/sing-box/tuic_name${HY2_INSTANCE_SUFFIX}.txt"
         current_name=$(cat "$file_path" 2>/dev/null || echo "TUIC_Node")
         protocol="TUIC v5"
     else
@@ -1581,7 +1578,7 @@ modify_node_name() {
     fi
 
     yellow " 当前 $protocol 节点名称: $current_name"
-    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的节点名称 (全面支持中文、空格、括号等特殊符号): ${PLAIN}"
+    printf "%b" " ${LIGHT_YELLOW} ▶ 请输入新的节点名称 (全面支持中文、空格、特殊符号): ${PLAIN}"
     read new_name || return
     [[ -z "$new_name" ]] && return
 
